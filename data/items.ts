@@ -1,4 +1,24 @@
-export const BattleItems: {[itemid: string]: ItemData} = {
+export const Items: import('../sim/dex-items').ItemDataTable = {
+	abilityshield: {
+		name: "Ability Shield",
+		spritenum: 746,
+		fling: {
+			basePower: 30,
+		},
+		ignoreKlutz: true,
+		// Neutralizing Gas protection implemented in Pokemon.ignoringAbility() within sim/pokemon.ts
+		// and in Neutralizing Gas itself within data/abilities.ts
+		onSetAbility(ability, target, source, effect) {
+			if (effect && effect.effectType === 'Ability' && effect.name !== 'Trace') {
+				this.add('-ability', source, effect);
+			}
+			this.add('-block', target, 'item: Ability Shield');
+			return null;
+		},
+		// Mold Breaker protection implemented in Battle.suppressingAbility() within sim/battle.ts
+		num: 1881,
+		gen: 9,
+	},
 	abomasite: {
 		name: "Abomasite",
 		spritenum: 575,
@@ -12,7 +32,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 674,
 		gen: 6,
 		isNonstandard: "Past",
-		desc: "If held by an Abomasnow, this item allows it to Mega Evolve in battle.",
 	},
 	absolite: {
 		name: "Absolite",
@@ -27,7 +46,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 677,
 		gen: 6,
 		isNonstandard: "Past",
-		desc: "If held by an Absol, this item allows it to Mega Evolve in battle.",
 	},
 	absorbbulb: {
 		name: "Absorb Bulb",
@@ -45,7 +63,26 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		num: 545,
 		gen: 5,
-		desc: "Raises holder's Sp. Atk by 1 stage if hit by a Water-type attack. Single use.",
+	},
+	adamantcrystal: {
+		name: "Adamant Crystal",
+		spritenum: 741,
+		onBasePowerPriority: 15,
+		onBasePower(basePower, user, target, move) {
+			if (user.baseSpecies.num === 483 && (move.type === 'Steel' || move.type === 'Dragon')) {
+				return this.chainModify([4915, 4096]);
+			}
+		},
+		onTakeItem(item, pokemon, source) {
+			if (source?.baseSpecies.num === 483 || pokemon.baseSpecies.num === 483) {
+				return false;
+			}
+			return true;
+		},
+		forcedForme: "Dialga-Origin",
+		itemUser: ["Dialga-Origin"],
+		num: 1777,
+		gen: 8,
 	},
 	adamantorb: {
 		name: "Adamant Orb",
@@ -55,15 +92,13 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		onBasePowerPriority: 15,
 		onBasePower(basePower, user, target, move) {
-			if (move && user.baseSpecies.name === 'Dialga' && (move.type === 'Steel' || move.type === 'Dragon')) {
-				return this.chainModify([0x1333, 0x1000]);
+			if (user.baseSpecies.num === 483 && (move.type === 'Steel' || move.type === 'Dragon')) {
+				return this.chainModify([4915, 4096]);
 			}
 		},
 		itemUser: ["Dialga"],
 		num: 135,
 		gen: 4,
-		isNonstandard: "Past",
-		desc: "If held by a Dialga, its Steel- and Dragon-type attacks have 1.2x power.",
 	},
 	adrenalineorb: {
 		name: "Adrenaline Orb",
@@ -72,7 +107,14 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 			basePower: 30,
 		},
 		onAfterBoost(boost, target, source, effect) {
-			if (effect.id === 'intimidate') {
+			// Adrenaline Orb activates if Intimidate is blocked by an ability like Hyper Cutter,
+			// which deletes boost.atk,
+			// but not if the holder's attack is already at -6 (or +6 if it has Contrary),
+			// which sets boost.atk to 0
+			if (target.boosts['spe'] === 6 || boost.atk === 0) {
+				return;
+			}
+			if (effect.name === 'Intimidate') {
 				target.useItem();
 			}
 		},
@@ -81,7 +123,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		num: 846,
 		gen: 7,
-		desc: "Raises holder's Speed by 1 stage if it gets affected by Intimidate. Single use.",
 	},
 	aerodactylite: {
 		name: "Aerodactylite",
@@ -96,7 +137,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 672,
 		gen: 6,
 		isNonstandard: "Past",
-		desc: "If held by an Aerodactyl, this item allows it to Mega Evolve in battle.",
 	},
 	aggronite: {
 		name: "Aggronite",
@@ -111,7 +151,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 667,
 		gen: 6,
 		isNonstandard: "Past",
-		desc: "If held by an Aggron, this item allows it to Mega Evolve in battle.",
 	},
 	aguavberry: {
 		name: "Aguav Berry",
@@ -122,22 +161,22 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 			type: "Dragon",
 		},
 		onUpdate(pokemon) {
-			if (pokemon.hp <= pokemon.maxhp / 4 || (pokemon.hp <= pokemon.maxhp / 2 && pokemon.hasAbility('gluttony'))) {
+			if (pokemon.hp <= pokemon.maxhp / 4 || (pokemon.hp <= pokemon.maxhp / 2 &&
+				pokemon.hasAbility('gluttony') && pokemon.abilityState.gluttony)) {
 				pokemon.eatItem();
 			}
 		},
 		onTryEatItem(item, pokemon) {
-			if (!this.runEvent('TryHeal', pokemon)) return false;
+			if (!this.runEvent('TryHeal', pokemon, null, this.effect, pokemon.baseMaxhp / 3)) return false;
 		},
 		onEat(pokemon) {
-			this.heal(pokemon.baseMaxhp * 0.33);
+			this.heal(pokemon.baseMaxhp / 3);
 			if (pokemon.getNature().minus === 'spd') {
 				pokemon.addVolatile('confusion');
 			}
 		},
 		num: 162,
 		gen: 3,
-		desc: "Restores 33% max HP at 1/4 max HP or less; confuses if -SpD Nature. Single use.",
 	},
 	airballoon: {
 		name: "Air Balloon",
@@ -154,21 +193,20 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		onDamagingHit(damage, target, source, move) {
 			this.add('-enditem', target, 'Air Balloon');
 			target.item = '';
-			target.itemData = {id: '', target};
-			this.runEvent('AfterUseItem', target, null, null, this.dex.getItem('airballoon'));
+			this.clearEffectState(target.itemState);
+			this.runEvent('AfterUseItem', target, null, null, this.dex.items.get('airballoon'));
 		},
 		onAfterSubDamage(damage, target, source, effect) {
 			this.debug('effect: ' + effect.id);
 			if (effect.effectType === 'Move') {
 				this.add('-enditem', target, 'Air Balloon');
 				target.item = '';
-				target.itemData = {id: '', target};
-				this.runEvent('AfterUseItem', target, null, null, this.dex.getItem('airballoon'));
+				this.clearEffectState(target.itemState);
+				this.runEvent('AfterUseItem', target, null, null, this.dex.items.get('airballoon'));
 			}
 		},
 		num: 541,
 		gen: 5,
-		desc: "Holder is immune to Ground-type attacks. Pops when holder is hit.",
 	},
 	alakazite: {
 		name: "Alakazite",
@@ -183,7 +221,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 679,
 		gen: 6,
 		isNonstandard: "Past",
-		desc: "If held by an Alakazam, this item allows it to Mega Evolve in battle.",
 	},
 	aloraichiumz: {
 		name: "Aloraichium Z",
@@ -195,7 +232,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 803,
 		gen: 7,
 		isNonstandard: "Past",
-		desc: "If held by an Alolan Raichu with Thunderbolt, it can use Stoked Sparksurfer.",
 	},
 	altarianite: {
 		name: "Altarianite",
@@ -210,7 +246,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 755,
 		gen: 6,
 		isNonstandard: "Past",
-		desc: "If held by an Altaria, this item allows it to Mega Evolve in battle.",
 	},
 	ampharosite: {
 		name: "Ampharosite",
@@ -225,7 +260,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 658,
 		gen: 6,
 		isNonstandard: "Past",
-		desc: "If held by an Ampharos, this item allows it to Mega Evolve in battle.",
 	},
 	apicotberry: {
 		name: "Apicot Berry",
@@ -236,16 +270,16 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 			type: "Ground",
 		},
 		onUpdate(pokemon) {
-			if (pokemon.hp <= pokemon.maxhp / 4 || (pokemon.hp <= pokemon.maxhp / 2 && pokemon.hasAbility('gluttony'))) {
+			if (pokemon.hp <= pokemon.maxhp / 4 || (pokemon.hp <= pokemon.maxhp / 2 &&
+				pokemon.hasAbility('gluttony') && pokemon.abilityState.gluttony)) {
 				pokemon.eatItem();
 			}
 		},
 		onEat(pokemon) {
-			this.boost({spd: 1});
+			this.boost({ spd: 1 });
 		},
 		num: 205,
 		gen: 3,
-		desc: "Raises holder's Sp. Def by 1 stage when at 1/4 max HP or less. Single use.",
 	},
 	armorfossil: {
 		name: "Armor Fossil",
@@ -256,7 +290,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 104,
 		gen: 4,
 		isNonstandard: "Past",
-		desc: "Can be revived into Shieldon.",
 	},
 	aspearberry: {
 		name: "Aspear Berry",
@@ -278,7 +311,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		num: 153,
 		gen: 3,
-		desc: "Holder is cured if it is frozen. Single use.",
 	},
 	assaultvest: {
 		name: "Assault Vest",
@@ -292,14 +324,14 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		onDisableMove(pokemon) {
 			for (const moveSlot of pokemon.moveSlots) {
-				if (this.dex.getMove(moveSlot.move).category === 'Status') {
+				const move = this.dex.moves.get(moveSlot.id);
+				if (move.category === 'Status' && move.id !== 'mefirst') {
 					pokemon.disableMove(moveSlot.id);
 				}
 			}
 		},
 		num: 640,
 		gen: 6,
-		desc: "Holder's Sp. Def is 1.5x, but it can only select damaging moves.",
 	},
 	audinite: {
 		name: "Audinite",
@@ -314,7 +346,15 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 757,
 		gen: 6,
 		isNonstandard: "Past",
-		desc: "If held by an Audino, this item allows it to Mega Evolve in battle.",
+	},
+	auspiciousarmor: {
+		name: "Auspicious Armor",
+		spritenum: 753,
+		fling: {
+			basePower: 30,
+		},
+		num: 2344,
+		gen: 9,
 	},
 	babiriberry: {
 		name: "Babiri Berry",
@@ -326,7 +366,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		onSourceModifyDamage(damage, source, target, move) {
 			if (move.type === 'Steel' && target.getMoveHitData(move).typeMod > 0) {
-				const hitSub = target.volatiles['substitute'] && !move.flags['authentic'] && !(move.infiltrates && this.gen >= 6);
+				const hitSub = target.volatiles['substitute'] && !move.flags['bypasssub'] && !(move.infiltrates && this.gen >= 6);
 				if (hitSub) return;
 
 				if (target.eatItem()) {
@@ -339,7 +379,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		onEat() { },
 		num: 199,
 		gen: 4,
-		desc: "Halves damage taken from a supereffective Steel-type attack. Single use.",
 	},
 	banettite: {
 		name: "Banettite",
@@ -354,7 +393,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 668,
 		gen: 6,
 		isNonstandard: "Past",
-		desc: "If held by a Banette, this item allows it to Mega Evolve in battle.",
 	},
 	beastball: {
 		name: "Beast Ball",
@@ -362,7 +400,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 851,
 		gen: 7,
 		isPokeball: true,
-		desc: "A special Poke Ball designed to catch Ultra Beasts.",
 	},
 	beedrillite: {
 		name: "Beedrillite",
@@ -377,7 +414,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 770,
 		gen: 6,
 		isNonstandard: "Past",
-		desc: "If held by a Beedrill, this item allows it to Mega Evolve in battle.",
 	},
 	belueberry: {
 		name: "Belue Berry",
@@ -391,7 +427,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 183,
 		gen: 3,
 		isNonstandard: "Past",
-		desc: "Cannot be eaten by the holder. No effect when eaten with Bug Bite or Pluck.",
 	},
 	berryjuice: {
 		name: "Berry Juice",
@@ -401,14 +436,14 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		onUpdate(pokemon) {
 			if (pokemon.hp <= pokemon.maxhp / 2) {
-				if (this.runEvent('TryHeal', pokemon) && pokemon.useItem()) {
+				if (this.runEvent('TryHeal', pokemon, null, this.effect, 20) && pokemon.useItem()) {
 					this.heal(20);
 				}
 			}
 		},
 		num: 43,
 		gen: 2,
-		desc: "Restores 20 HP when at 1/2 max HP or less. Single use.",
+		isNonstandard: "Past",
 	},
 	berrysweet: {
 		name: "Berry Sweet",
@@ -418,7 +453,15 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		num: 1111,
 		gen: 8,
-		desc: "Evolves Milcery into Alcremie when held and spun around.",
+	},
+	bignugget: {
+		name: "Big Nugget",
+		spritenum: 27,
+		fling: {
+			basePower: 130,
+		},
+		num: 581,
+		gen: 5,
 	},
 	bigroot: {
 		name: "Big Root",
@@ -430,12 +473,11 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		onTryHeal(damage, target, source, effect) {
 			const heals = ['drain', 'leechseed', 'ingrain', 'aquaring', 'strengthsap'];
 			if (heals.includes(effect.id)) {
-				return this.chainModify([0x14CC, 0x1000]);
+				return this.chainModify([5324, 4096]);
 			}
 		},
 		num: 296,
 		gen: 4,
-		desc: "Holder gains 1.3x HP from draining/Aqua Ring/Ingrain/Leech Seed/Strength Sap.",
 	},
 	bindingband: {
 		name: "Binding Band",
@@ -446,7 +488,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		// implemented in statuses
 		num: 544,
 		gen: 5,
-		desc: "Holder's partial-trapping moves deal 1/6 max HP per turn instead of 1/8.",
 	},
 	blackbelt: {
 		name: "Black Belt",
@@ -457,40 +498,11 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		onBasePowerPriority: 15,
 		onBasePower(basePower, user, target, move) {
 			if (move && move.type === 'Fighting') {
-				return this.chainModify([0x1333, 0x1000]);
+				return this.chainModify([4915, 4096]);
 			}
 		},
 		num: 241,
 		gen: 2,
-		desc: "Holder's Fighting-type attacks have 1.2x power.",
-	},
-	blacksludge: {
-		name: "Black Sludge",
-		spritenum: 34,
-		fling: {
-			basePower: 30,
-		},
-		onResidualOrder: 5,
-		onResidualSubOrder: 5,
-		onResidual(pokemon) {
-			if (this.field.isTerrain('grassyterrain')) return;
-			if (pokemon.hasType('Poison')) {
-				this.heal(pokemon.baseMaxhp / 16);
-			} else {
-				this.damage(pokemon.baseMaxhp / 8);
-			}
-		},
-		onTerrain(pokemon) {
-			if (!this.field.isTerrain('grassyterrain')) return;
-			if (pokemon.hasType('Poison')) {
-				this.heal(pokemon.baseMaxhp / 16);
-			} else {
-				this.damage(pokemon.baseMaxhp / 8);
-			}
-		},
-		num: 281,
-		gen: 4,
-		desc: "Each turn, if holder is a Poison type, restores 1/16 max HP; loses 1/8 if not.",
 	},
 	blackglasses: {
 		name: "Black Glasses",
@@ -501,12 +513,29 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		onBasePowerPriority: 15,
 		onBasePower(basePower, user, target, move) {
 			if (move && move.type === 'Dark') {
-				return this.chainModify([0x1333, 0x1000]);
+				return this.chainModify([4915, 4096]);
 			}
 		},
 		num: 240,
 		gen: 2,
-		desc: "Holder's Dark-type attacks have 1.2x power.",
+	},
+	blacksludge: {
+		name: "Black Sludge",
+		spritenum: 34,
+		fling: {
+			basePower: 30,
+		},
+		onResidualOrder: 5,
+		onResidualSubOrder: 4,
+		onResidual(pokemon) {
+			if (pokemon.hasType('Poison')) {
+				this.heal(pokemon.baseMaxhp / 16);
+			} else {
+				this.damage(pokemon.baseMaxhp / 8);
+			}
+		},
+		num: 281,
+		gen: 4,
 	},
 	blastoisinite: {
 		name: "Blastoisinite",
@@ -521,7 +550,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 661,
 		gen: 6,
 		isNonstandard: "Past",
-		desc: "If held by a Blastoise, this item allows it to Mega Evolve in battle.",
 	},
 	blazikenite: {
 		name: "Blazikenite",
@@ -536,28 +564,25 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 664,
 		gen: 6,
 		isNonstandard: "Past",
-		desc: "If held by a Blaziken, this item allows it to Mega Evolve in battle.",
 	},
 	blueorb: {
 		name: "Blue Orb",
 		spritenum: 41,
+		onSwitchInPriority: -1,
 		onSwitchIn(pokemon) {
-			if (pokemon.isActive && pokemon.baseSpecies.name === 'Kyogre') {
-				this.queue.insertChoice({choice: 'runPrimal', pokemon: pokemon});
+			if (pokemon.isActive && pokemon.baseSpecies.name === 'Kyogre' && !pokemon.transformed) {
+				pokemon.formeChange('Kyogre-Primal', this.effect, true);
 			}
-		},
-		onPrimal(pokemon) {
-			pokemon.formeChange('Kyogre-Primal', this.effect, true);
 		},
 		onTakeItem(item, source) {
 			if (source.baseSpecies.baseSpecies === 'Kyogre') return false;
 			return true;
 		},
 		itemUser: ["Kyogre"],
+		isPrimalOrb: true,
 		num: 535,
 		gen: 6,
 		isNonstandard: "Past",
-		desc: "If held by a Kyogre, this item triggers its Primal Reversion in battle.",
 	},
 	blukberry: {
 		name: "Bluk Berry",
@@ -570,7 +595,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		onEat: false,
 		num: 165,
 		gen: 3,
-		desc: "Cannot be eaten by the holder. No effect when eaten with Bug Bite or Pluck.",
+		isNonstandard: "Past",
 	},
 	blunderpolicy: {
 		name: "Blunder Policy",
@@ -581,7 +606,34 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		// Item activation located in scripts.js
 		num: 1121,
 		gen: 8,
-		desc: "If the holder misses due to accuracy, its Speed is raised by 2 stages. Single use.",
+	},
+	boosterenergy: {
+		name: "Booster Energy",
+		spritenum: 745,
+		fling: {
+			basePower: 30,
+		},
+		onSwitchInPriority: -2,
+		onStart(pokemon) {
+			this.effectState.started = true;
+			((this.effect as any).onUpdate as (p: Pokemon) => void).call(this, pokemon);
+		},
+		onUpdate(pokemon) {
+			if (!this.effectState.started || pokemon.transformed) return;
+
+			if (pokemon.hasAbility('protosynthesis') && !this.field.isWeather('sunnyday') && pokemon.useItem()) {
+				pokemon.addVolatile('protosynthesis');
+			}
+			if (pokemon.hasAbility('quarkdrive') && !this.field.isTerrain('electricterrain') && pokemon.useItem()) {
+				pokemon.addVolatile('quarkdrive');
+			}
+		},
+		onTakeItem(item, source) {
+			if (source.baseSpecies.tags.includes("Paradox")) return false;
+			return true;
+		},
+		num: 1880,
+		gen: 9,
 	},
 	bottlecap: {
 		name: "Bottle Cap",
@@ -591,7 +643,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		num: 795,
 		gen: 7,
-		desc: "Used for Hyper Training. One of a Pokemon's stats is calculated with an IV of 31.",
 	},
 	brightpowder: {
 		name: "Bright Powder",
@@ -599,14 +650,14 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		fling: {
 			basePower: 10,
 		},
+		onModifyAccuracyPriority: -2,
 		onModifyAccuracy(accuracy) {
 			if (typeof accuracy !== 'number') return;
 			this.debug('brightpowder - decreasing accuracy');
-			return accuracy * 0.9;
+			return this.chainModify([3686, 4096]);
 		},
 		num: 213,
 		gen: 2,
-		desc: "The accuracy of attacks against the holder is 0.9x.",
 	},
 	buggem: {
 		name: "Bug Gem",
@@ -621,7 +672,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 558,
 		gen: 5,
 		isNonstandard: "Past",
-		desc: "Holder's first successful Bug-type attack will have 1.3x power. Single use.",
 	},
 	bugmemory: {
 		name: "Bug Memory",
@@ -637,7 +687,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		itemUser: ["Silvally-Bug"],
 		num: 909,
 		gen: 7,
-		desc: "Holder's Multi-Attack is Bug type.",
+		isNonstandard: "Past",
 	},
 	buginiumz: {
 		name: "Buginium Z",
@@ -650,7 +700,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 787,
 		gen: 7,
 		isNonstandard: "Past",
-		desc: "If holder has a Bug move, this item allows it to use a Bug Z-Move.",
 	},
 	burndrive: {
 		name: "Burn Drive",
@@ -667,7 +716,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 118,
 		gen: 5,
 		isNonstandard: "Past",
-		desc: "Holder's Techno Blast is Fire type.",
 	},
 	cameruptite: {
 		name: "Cameruptite",
@@ -682,7 +730,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 767,
 		gen: 6,
 		isNonstandard: "Past",
-		desc: "If held by a Camerupt, this item allows it to Mega Evolve in battle.",
 	},
 	cellbattery: {
 		name: "Cell Battery",
@@ -700,7 +747,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		num: 546,
 		gen: 5,
-		desc: "Raises holder's Attack by 1 if hit by an Electric-type attack. Single use.",
 	},
 	charcoal: {
 		name: "Charcoal",
@@ -711,12 +757,11 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		onBasePowerPriority: 15,
 		onBasePower(basePower, user, target, move) {
 			if (move && move.type === 'Fire') {
-				return this.chainModify([0x1333, 0x1000]);
+				return this.chainModify([4915, 4096]);
 			}
 		},
 		num: 249,
 		gen: 2,
-		desc: "Holder's Fire-type attacks have 1.2x power.",
 	},
 	charizarditex: {
 		name: "Charizardite X",
@@ -731,7 +776,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 660,
 		gen: 6,
 		isNonstandard: "Past",
-		desc: "If held by a Charizard, this item allows it to Mega Evolve in battle.",
 	},
 	charizarditey: {
 		name: "Charizardite Y",
@@ -746,7 +790,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 678,
 		gen: 6,
 		isNonstandard: "Past",
-		desc: "If held by a Charizard, this item allows it to Mega Evolve in battle.",
 	},
 	chartiberry: {
 		name: "Charti Berry",
@@ -758,7 +801,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		onSourceModifyDamage(damage, source, target, move) {
 			if (move.type === 'Rock' && target.getMoveHitData(move).typeMod > 0) {
-				const hitSub = target.volatiles['substitute'] && !move.flags['authentic'] && !(move.infiltrates && this.gen >= 6);
+				const hitSub = target.volatiles['substitute'] && !move.flags['bypasssub'] && !(move.infiltrates && this.gen >= 6);
 				if (hitSub) return;
 
 				if (target.eatItem()) {
@@ -771,7 +814,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		onEat() { },
 		num: 195,
 		gen: 4,
-		desc: "Halves damage taken from a supereffective Rock-type attack. Single use.",
 	},
 	cheriberry: {
 		name: "Cheri Berry",
@@ -793,7 +835,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		num: 149,
 		gen: 3,
-		desc: "Holder cures itself if it is paralyzed. Single use.",
 	},
 	cherishball: {
 		name: "Cherish Ball",
@@ -801,7 +842,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 16,
 		gen: 4,
 		isPokeball: true,
-		desc: "A rare Poke Ball that has been crafted to commemorate an occasion.",
+		isNonstandard: "Unobtainable",
 	},
 	chestoberry: {
 		name: "Chesto Berry",
@@ -823,7 +864,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		num: 150,
 		gen: 3,
-		desc: "Holder wakes up if it is asleep. Single use.",
 	},
 	chilanberry: {
 		name: "Chilan Berry",
@@ -836,7 +876,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		onSourceModifyDamage(damage, source, target, move) {
 			if (
 				move.type === 'Normal' &&
-				(!target.volatiles['substitute'] || move.flags['authentic'] || (move.infiltrates && this.gen >= 6))
+				(!target.volatiles['substitute'] || move.flags['bypasssub'] || (move.infiltrates && this.gen >= 6))
 			) {
 				if (target.eatItem()) {
 					this.debug('-50% reduction');
@@ -848,7 +888,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		onEat() { },
 		num: 200,
 		gen: 4,
-		desc: "Halves damage taken from a Normal-type attack. Single use.",
 	},
 	chilldrive: {
 		name: "Chill Drive",
@@ -865,7 +904,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 119,
 		gen: 5,
 		isNonstandard: "Past",
-		desc: "Holder's Techno Blast is Ice type.",
 	},
 	chippedpot: {
 		name: "Chipped Pot",
@@ -875,7 +913,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		num: 1254,
 		gen: 8,
-		desc: "Evolves Sinistea-Antique into Polteageist-Antique when used.",
 	},
 	choiceband: {
 		name: "Choice Band",
@@ -885,7 +922,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		onStart(pokemon) {
 			if (pokemon.volatiles['choicelock']) {
-				this.debug('removing choicelock: ' + pokemon.volatiles.choicelock);
+				this.debug('removing choicelock');
 			}
 			pokemon.removeVolatile('choicelock');
 		},
@@ -900,7 +937,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		isChoice: true,
 		num: 220,
 		gen: 3,
-		desc: "Holder's Attack is 1.5x, but it can only select the first move it executes.",
 	},
 	choicescarf: {
 		name: "Choice Scarf",
@@ -910,7 +946,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		onStart(pokemon) {
 			if (pokemon.volatiles['choicelock']) {
-				this.debug('removing choicelock: ' + pokemon.volatiles.choicelock);
+				this.debug('removing choicelock');
 			}
 			pokemon.removeVolatile('choicelock');
 		},
@@ -924,7 +960,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		isChoice: true,
 		num: 287,
 		gen: 4,
-		desc: "Holder's Speed is 1.5x, but it can only select the first move it executes.",
 	},
 	choicespecs: {
 		name: "Choice Specs",
@@ -934,7 +969,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		onStart(pokemon) {
 			if (pokemon.volatiles['choicelock']) {
-				this.debug('removing choicelock: ' + pokemon.volatiles.choicelock);
+				this.debug('removing choicelock');
 			}
 			pokemon.removeVolatile('choicelock');
 		},
@@ -949,7 +984,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		isChoice: true,
 		num: 297,
 		gen: 4,
-		desc: "Holder's Sp. Atk is 1.5x, but it can only select the first move it executes.",
 	},
 	chopleberry: {
 		name: "Chople Berry",
@@ -961,7 +995,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		onSourceModifyDamage(damage, source, target, move) {
 			if (move.type === 'Fighting' && target.getMoveHitData(move).typeMod > 0) {
-				const hitSub = target.volatiles['substitute'] && !move.flags['authentic'] && !(move.infiltrates && this.gen >= 6);
+				const hitSub = target.volatiles['substitute'] && !move.flags['bypasssub'] && !(move.infiltrates && this.gen >= 6);
 				if (hitSub) return;
 
 				if (target.eatItem()) {
@@ -974,7 +1008,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		onEat() { },
 		num: 189,
 		gen: 4,
-		desc: "Halves damage taken from a supereffective Fighting-type attack. Single use.",
 	},
 	clawfossil: {
 		name: "Claw Fossil",
@@ -985,7 +1018,30 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 100,
 		gen: 3,
 		isNonstandard: "Past",
-		desc: "Can be revived into Anorith.",
+	},
+	clearamulet: {
+		name: "Clear Amulet",
+		spritenum: 747,
+		fling: {
+			basePower: 30,
+		},
+		onTryBoostPriority: 1,
+		onTryBoost(boost, target, source, effect) {
+			if (source && target === source) return;
+			let showMsg = false;
+			let i: BoostID;
+			for (i in boost) {
+				if (boost[i]! < 0) {
+					delete boost[i];
+					showMsg = true;
+				}
+			}
+			if (showMsg && !(effect as ActiveMove).secondaries && effect.id !== 'octolock') {
+				this.add('-fail', target, 'unboost', '[from] item: Clear Amulet', `[of] ${target}`);
+			}
+		},
+		num: 1882,
+		gen: 9,
 	},
 	cloversweet: {
 		name: "Clover Sweet",
@@ -995,7 +1051,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		num: 1112,
 		gen: 8,
-		desc: "Evolves Milcery into Alcremie when held and spun around.",
 	},
 	cobaberry: {
 		name: "Coba Berry",
@@ -1007,7 +1062,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		onSourceModifyDamage(damage, source, target, move) {
 			if (move.type === 'Flying' && target.getMoveHitData(move).typeMod > 0) {
-				const hitSub = target.volatiles['substitute'] && !move.flags['authentic'] && !(move.infiltrates && this.gen >= 6);
+				const hitSub = target.volatiles['substitute'] && !move.flags['bypasssub'] && !(move.infiltrates && this.gen >= 6);
 				if (hitSub) return;
 
 				if (target.eatItem()) {
@@ -1020,7 +1075,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		onEat() { },
 		num: 192,
 		gen: 4,
-		desc: "Halves damage taken from a supereffective Flying-type attack. Single use.",
 	},
 	colburberry: {
 		name: "Colbur Berry",
@@ -1032,7 +1086,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		onSourceModifyDamage(damage, source, target, move) {
 			if (move.type === 'Dark' && target.getMoveHitData(move).typeMod > 0) {
-				const hitSub = target.volatiles['substitute'] && !move.flags['authentic'] && !(move.infiltrates && this.gen >= 6);
+				const hitSub = target.volatiles['substitute'] && !move.flags['bypasssub'] && !(move.infiltrates && this.gen >= 6);
 				if (hitSub) return;
 
 				if (target.eatItem()) {
@@ -1045,7 +1099,27 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		onEat() { },
 		num: 198,
 		gen: 4,
-		desc: "Halves damage taken from a supereffective Dark-type attack. Single use.",
+	},
+	cornerstonemask: {
+		name: "Cornerstone Mask",
+		spritenum: 758,
+		fling: {
+			basePower: 60,
+		},
+		onBasePowerPriority: 15,
+		onBasePower(basePower, user, target, move) {
+			if (user.baseSpecies.name.startsWith('Ogerpon-Cornerstone')) {
+				return this.chainModify([4915, 4096]);
+			}
+		},
+		onTakeItem(item, source) {
+			if (source.baseSpecies.baseSpecies === 'Ogerpon') return false;
+			return true;
+		},
+		forcedForme: "Ogerpon-Cornerstone",
+		itemUser: ["Ogerpon-Cornerstone"],
+		num: 2406,
+		gen: 9,
 	},
 	cornnberry: {
 		name: "Cornn Berry",
@@ -1059,7 +1133,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 175,
 		gen: 3,
 		isNonstandard: "Past",
-		desc: "Cannot be eaten by the holder. No effect when eaten with Bug Bite or Pluck.",
 	},
 	coverfossil: {
 		name: "Cover Fossil",
@@ -1070,7 +1143,19 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 572,
 		gen: 5,
 		isNonstandard: "Past",
-		desc: "Can be revived into Tirtouga.",
+	},
+	covertcloak: {
+		name: "Covert Cloak",
+		spritenum: 750,
+		fling: {
+			basePower: 30,
+		},
+		onModifySecondaries(secondaries) {
+			this.debug('Covert Cloak prevent secondary');
+			return secondaries.filter(effect => !!(effect.self || effect.dustproof));
+		},
+		num: 1885,
+		gen: 9,
 	},
 	crackedpot: {
 		name: "Cracked Pot",
@@ -1080,7 +1165,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		num: 1253,
 		gen: 8,
-		desc: "Evolves Sinistea into Polteageist when used.",
 	},
 	custapberry: {
 		name: "Custap Berry",
@@ -1090,20 +1174,22 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 			basePower: 100,
 			type: "Ghost",
 		},
-		onFractionalPriorityPriority: -1,
+		onFractionalPriorityPriority: -2,
 		onFractionalPriority(priority, pokemon) {
-			if (pokemon.hp <= pokemon.maxhp / 4 || (pokemon.hp <= pokemon.maxhp / 2 && pokemon.hasAbility('gluttony'))) {
+			if (
+				priority <= 0 &&
+				(pokemon.hp <= pokemon.maxhp / 4 || (pokemon.hp <= pokemon.maxhp / 2 &&
+					pokemon.hasAbility('gluttony') && pokemon.abilityState.gluttony))
+			) {
 				if (pokemon.eatItem()) {
 					this.add('-activate', pokemon, 'item: Custap Berry', '[consumed]');
-					return Math.round(priority) + 0.1;
+					return 0.1;
 				}
 			}
 		},
 		onEat() { },
 		num: 210,
 		gen: 4,
-		isNonstandard: "Unobtainable",
-		desc: "Holder moves first in its priority bracket when at 1/4 max HP or less. Single use.",
 	},
 	damprock: {
 		name: "Damp Rock",
@@ -1113,7 +1199,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		num: 285,
 		gen: 4,
-		desc: "Holder's use of Rain Dance lasts 8 turns instead of 5.",
 	},
 	darkgem: {
 		name: "Dark Gem",
@@ -1128,7 +1213,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 562,
 		gen: 5,
 		isNonstandard: "Past",
-		desc: "Holder's first successful Dark-type attack will have 1.3x power. Single use.",
 	},
 	darkmemory: {
 		name: "Dark Memory",
@@ -1144,7 +1228,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		itemUser: ["Silvally-Dark"],
 		num: 919,
 		gen: 7,
-		desc: "Holder's Multi-Attack is Dark type.",
+		isNonstandard: "Past",
 	},
 	darkiniumz: {
 		name: "Darkinium Z",
@@ -1157,7 +1241,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 791,
 		gen: 7,
 		isNonstandard: "Past",
-		desc: "If holder has a Dark move, this item allows it to use a Dark Z-Move.",
 	},
 	dawnstone: {
 		name: "Dawn Stone",
@@ -1167,8 +1250,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		num: 109,
 		gen: 4,
-		desc: "Evolves male Kirlia into Gallade and female Snorunt into Froslass when used.",
-		shortDesc: "Evolves certain species of Pokemon when used.",
 	},
 	decidiumz: {
 		name: "Decidium Z",
@@ -1180,7 +1261,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 798,
 		gen: 7,
 		isNonstandard: "Past",
-		desc: "If held by a Decidueye with Spirit Shackle, it can use Sinister Arrow Raid.",
 	},
 	deepseascale: {
 		name: "Deep Sea Scale",
@@ -1197,8 +1277,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		itemUser: ["Clamperl"],
 		num: 227,
 		gen: 3,
-		desc: "If held by a Clamperl, its Sp. Def is doubled. Evolves Clamperl into Gorebyss when traded.",
-		shortDesc: "If held by a Clamperl, its Sp. Def is doubled.",
+		isNonstandard: "Past",
 	},
 	deepseatooth: {
 		name: "Deep Sea Tooth",
@@ -1215,8 +1294,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		itemUser: ["Clamperl"],
 		num: 226,
 		gen: 3,
-		desc: "If held by a Clamperl, its Sp. Atk is doubled. Evolves Clamperl into Huntail when traded.",
-		shortDesc: "If held by a Clamperl, its Sp. Atk is doubled.",
+		isNonstandard: "Past",
 	},
 	destinyknot: {
 		name: "Destiny Knot",
@@ -1226,13 +1304,12 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		onAttractPriority: -100,
 		onAttract(target, source) {
-			this.debug('attract intercepted: ' + target + ' from ' + source);
+			this.debug(`attract intercepted: ${target} from ${source}`);
 			if (!source || source === target) return;
-			if (!source.volatiles.attract) source.addVolatile('attract', target);
+			if (!source.volatiles['attract']) source.addVolatile('attract', target);
 		},
 		num: 280,
 		gen: 4,
-		desc: "If holder becomes infatuated, the other Pokemon also becomes infatuated.",
 	},
 	diancite: {
 		name: "Diancite",
@@ -1247,7 +1324,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 764,
 		gen: 6,
 		isNonstandard: "Past",
-		desc: "If held by a Diancie, this item allows it to Mega Evolve in battle.",
 	},
 	diveball: {
 		name: "Dive Ball",
@@ -1255,7 +1331,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 7,
 		gen: 3,
 		isPokeball: true,
-		desc: "A Poke Ball that works especially well on Pokemon that live underwater.",
 	},
 	domefossil: {
 		name: "Dome Fossil",
@@ -1266,7 +1341,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 102,
 		gen: 3,
 		isNonstandard: "Past",
-		desc: "Can be revived into Kabuto.",
 	},
 	dousedrive: {
 		name: "Douse Drive",
@@ -1283,7 +1357,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 116,
 		gen: 5,
 		isNonstandard: "Past",
-		desc: "Holder's Techno Blast is Water type.",
 	},
 	dracoplate: {
 		name: "Draco Plate",
@@ -1292,7 +1365,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		onBasePowerPriority: 15,
 		onBasePower(basePower, user, target, move) {
 			if (move && move.type === 'Dragon') {
-				return this.chainModify([0x1333, 0x1000]);
+				return this.chainModify([4915, 4096]);
 			}
 		},
 		onTakeItem(item, pokemon, source) {
@@ -1304,8 +1377,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		forcedForme: "Arceus-Dragon",
 		num: 311,
 		gen: 4,
-		isNonstandard: "Unobtainable",
-		desc: "Holder's Dragon-type attacks have 1.2x power. Judgment is Dragon type.",
 	},
 	dragonfang: {
 		name: "Dragon Fang",
@@ -1316,12 +1387,11 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		onBasePowerPriority: 15,
 		onBasePower(basePower, user, target, move) {
 			if (move && move.type === 'Dragon') {
-				return this.chainModify([0x1333, 0x1000]);
+				return this.chainModify([4915, 4096]);
 			}
 		},
 		num: 250,
 		gen: 2,
-		desc: "Holder's Dragon-type attacks have 1.2x power.",
 	},
 	dragongem: {
 		name: "Dragon Gem",
@@ -1336,7 +1406,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 561,
 		gen: 5,
 		isNonstandard: "Past",
-		desc: "Holder's first successful Dragon-type attack will have 1.3x power. Single use.",
 	},
 	dragonmemory: {
 		name: "Dragon Memory",
@@ -1352,7 +1421,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		itemUser: ["Silvally-Dragon"],
 		num: 918,
 		gen: 7,
-		desc: "Holder's Multi-Attack is Dragon type.",
+		isNonstandard: "Past",
 	},
 	dragonscale: {
 		name: "Dragon Scale",
@@ -1360,9 +1429,8 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		fling: {
 			basePower: 30,
 		},
-		num: 250,
+		num: 235,
 		gen: 2,
-		desc: "Evolves Seadra into Kingdra when traded.",
 	},
 	dragoniumz: {
 		name: "Dragonium Z",
@@ -1375,7 +1443,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 790,
 		gen: 7,
 		isNonstandard: "Past",
-		desc: "If holder has a Dragon move, this item allows it to use a Dragon Z-Move.",
 	},
 	dreadplate: {
 		name: "Dread Plate",
@@ -1384,7 +1451,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		onBasePowerPriority: 15,
 		onBasePower(basePower, user, target, move) {
 			if (move && move.type === 'Dark') {
-				return this.chainModify([0x1333, 0x1000]);
+				return this.chainModify([4915, 4096]);
 			}
 		},
 		onTakeItem(item, pokemon, source) {
@@ -1396,8 +1463,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		forcedForme: "Arceus-Dark",
 		num: 312,
 		gen: 4,
-		isNonstandard: "Unobtainable",
-		desc: "Holder's Dark-type attacks have 1.2x power. Judgment is Dark type.",
 	},
 	dreamball: {
 		name: "Dream Ball",
@@ -1405,7 +1470,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 576,
 		gen: 5,
 		isPokeball: true,
-		desc: "A Poke Ball that makes it easier to catch wild Pokémon while they're asleep.",
 	},
 	dubiousdisc: {
 		name: "Dubious Disc",
@@ -1415,7 +1479,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		num: 324,
 		gen: 4,
-		desc: "Evolves Porygon2 into Porygon-Z when traded.",
 	},
 	durinberry: {
 		name: "Durin Berry",
@@ -1429,7 +1492,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 182,
 		gen: 3,
 		isNonstandard: "Past",
-		desc: "Cannot be eaten by the holder. No effect when eaten with Bug Bite or Pluck.",
 	},
 	duskball: {
 		name: "Dusk Ball",
@@ -1437,7 +1499,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 13,
 		gen: 4,
 		isPokeball: true,
-		desc: "A Poke Ball that makes it easier to catch wild Pokemon at night or in caves.",
 	},
 	duskstone: {
 		name: "Dusk Stone",
@@ -1447,8 +1508,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		num: 108,
 		gen: 4,
-		desc: "Evolves Murkrow into Honchkrow, Misdreavus into Mismagius, Lampent into Chandelure, and Doublade into Aegislash when used.",
-		shortDesc: "Evolves certain species of Pokemon when used.",
 	},
 	earthplate: {
 		name: "Earth Plate",
@@ -1457,7 +1516,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		onBasePowerPriority: 15,
 		onBasePower(basePower, user, target, move) {
 			if (move && move.type === 'Ground') {
-				return this.chainModify([0x1333, 0x1000]);
+				return this.chainModify([4915, 4096]);
 			}
 		},
 		onTakeItem(item, pokemon, source) {
@@ -1469,8 +1528,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		forcedForme: "Arceus-Ground",
 		num: 305,
 		gen: 4,
-		isNonstandard: "Unobtainable",
-		desc: "Holder's Ground-type attacks have 1.2x power. Judgment is Ground type.",
 	},
 	eeviumz: {
 		name: "Eevium Z",
@@ -1482,7 +1539,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 805,
 		gen: 7,
 		isNonstandard: "Past",
-		desc: "If held by an Eevee with Last Resort, it can use Extreme Evoboost.",
 	},
 	ejectbutton: {
 		name: "Eject Button",
@@ -1492,20 +1548,22 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		onAfterMoveSecondaryPriority: 2,
 		onAfterMoveSecondary(target, source, move) {
-			if (source && source !== target && target.hp && move && move.category !== 'Status') {
-				if (!this.canSwitch(target.side) || target.forceSwitchFlag) return;
+			if (source && source !== target && target.hp && move && move.category !== 'Status' && !move.flags['futuremove']) {
+				if (!this.canSwitch(target.side) || target.forceSwitchFlag || target.beingCalledBack || target.isSkyDropped()) return;
+				if (target.volatiles['commanding'] || target.volatiles['commanded']) return;
 				for (const pokemon of this.getAllActive()) {
 					if (pokemon.switchFlag === true) return;
 				}
+				target.switchFlag = true;
 				if (target.useItem()) {
-					target.switchFlag = true;
 					source.switchFlag = false;
+				} else {
+					target.switchFlag = false;
 				}
 			}
 		},
 		num: 547,
 		gen: 5,
-		desc: "If holder survives a hit, it immediately switches out to a chosen ally. Single use.",
 	},
 	ejectpack: {
 		name: "Eject Pack",
@@ -1516,7 +1574,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		onAfterBoost(boost, target, source, effect) {
 			if (this.activeMove?.id === 'partingshot') return;
 			let eject = false;
-			let i: BoostName;
+			let i: BoostID;
 			for (i in boost) {
 				if (boost[i]! < 0) {
 					eject = true;
@@ -1525,6 +1583,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 			if (eject) {
 				if (target.hp) {
 					if (!this.canSwitch(target.side)) return;
+					if (target.volatiles['commanding'] || target.volatiles['commanded']) return;
 					for (const pokemon of this.getAllActive()) {
 						if (pokemon.switchFlag === true) return;
 					}
@@ -1534,7 +1593,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		num: 1119,
 		gen: 8,
-		desc: "If the holder's stat stages are lowered, it switches to a chosen ally. Single use.",
 	},
 	electirizer: {
 		name: "Electirizer",
@@ -1544,15 +1602,13 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		num: 322,
 		gen: 4,
-		desc: "Evolves Electabuzz into Electivire when traded.",
 	},
 	electricgem: {
 		name: "Electric Gem",
 		spritenum: 120,
 		isGem: true,
 		onSourceTryPrimaryHit(target, source, move) {
-			const pledges = ['firepledge', 'grasspledge', 'waterpledge'];
-			if (target === source || move.category === 'Status' || pledges.includes(move.id)) return;
+			if (target === source || move.category === 'Status' || move.flags['pledgecombo']) return;
 			if (move.type === 'Electric' && source.useItem()) {
 				source.addVolatile('gem');
 			}
@@ -1560,7 +1616,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 550,
 		gen: 5,
 		isNonstandard: "Past",
-		desc: "Holder's first successful Electric-type attack will have 1.3x power. Single use.",
 	},
 	electricmemory: {
 		name: "Electric Memory",
@@ -1576,7 +1631,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		itemUser: ["Silvally-Electric"],
 		num: 915,
 		gen: 7,
-		desc: "Holder's Multi-Attack is Electric type.",
+		isNonstandard: "Past",
 	},
 	electricseed: {
 		name: "Electric Seed",
@@ -1584,13 +1639,13 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		fling: {
 			basePower: 10,
 		},
+		onSwitchInPriority: -1,
 		onStart(pokemon) {
 			if (!pokemon.ignoringItem() && this.field.isTerrain('electricterrain')) {
 				pokemon.useItem();
 			}
 		},
-		onAnyTerrainStart() {
-			const pokemon = this.effectData.target;
+		onTerrainChange(pokemon) {
 			if (this.field.isTerrain('electricterrain')) {
 				pokemon.useItem();
 			}
@@ -1600,7 +1655,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		num: 881,
 		gen: 7,
-		desc: "If the terrain is Electric Terrain, raises holder's Defense by 1 stage. Single use.",
 	},
 	electriumz: {
 		name: "Electrium Z",
@@ -1613,17 +1667,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 779,
 		gen: 7,
 		isNonstandard: "Past",
-		desc: "If holder has an Electric move, this item allows it to use an Electric Z-Move.",
-	},
-	energypowder: {
-		name: "Energy Powder",
-		spritenum: 123,
-		fling: {
-			basePower: 30,
-		},
-		num: 34,
-		gen: 2,
-		desc: "Restores 60 HP to one Pokemon.",
 	},
 	enigmaberry: {
 		name: "Enigma Berry",
@@ -1641,13 +1684,11 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 			}
 		},
 		onTryEatItem(item, pokemon) {
-			if (!this.runEvent('TryHeal', pokemon)) return false;
+			if (!this.runEvent('TryHeal', pokemon, null, this.effect, pokemon.baseMaxhp / 4)) return false;
 		},
 		onEat() { },
 		num: 208,
 		gen: 3,
-		isNonstandard: "Unobtainable",
-		desc: "Restores 1/4 max HP after holder is hit by a supereffective move. Single use.",
 	},
 	eviolite: {
 		name: "Eviolite",
@@ -1657,21 +1698,18 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		onModifyDefPriority: 2,
 		onModifyDef(def, pokemon) {
-			// Temporary hardcode for Slowpoke-Galar since it's a special case
-			if (pokemon.baseSpecies.nfe || pokemon.baseSpecies.name === 'Slowpoke-Galar') {
+			if (pokemon.baseSpecies.nfe) {
 				return this.chainModify(1.5);
 			}
 		},
 		onModifySpDPriority: 2,
 		onModifySpD(spd, pokemon) {
-			// Temporary hardcode for Slowpoke-Galar since it's a special case
-			if (pokemon.baseSpecies.nfe || pokemon.baseSpecies.name === 'Slowpoke-Galar') {
+			if (pokemon.baseSpecies.nfe) {
 				return this.chainModify(1.5);
 			}
 		},
 		num: 538,
 		gen: 5,
-		desc: "If holder's species can evolve, its Defense and Sp. Def are 1.5x.",
 	},
 	expertbelt: {
 		name: "Expert Belt",
@@ -1681,12 +1719,11 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		onModifyDamage(damage, source, target, move) {
 			if (move && target.getMoveHitData(move).typeMod > 0) {
-				return this.chainModify([0x1333, 0x1000]);
+				return this.chainModify([4915, 4096]);
 			}
 		},
 		num: 268,
 		gen: 4,
-		desc: "Holder's attacks that are super effective against the target do 1.2x damage.",
 	},
 	fairiumz: {
 		name: "Fairium Z",
@@ -1699,7 +1736,21 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 793,
 		gen: 7,
 		isNonstandard: "Past",
-		desc: "If holder has a Fairy move, this item allows it to use a Fairy Z-Move.",
+	},
+	fairyfeather: {
+		name: "Fairy Feather",
+		spritenum: 754,
+		fling: {
+			basePower: 10,
+		},
+		onBasePowerPriority: 15,
+		onBasePower(basePower, user, target, move) {
+			if (move && move.type === 'Fairy') {
+				return this.chainModify([4915, 4096]);
+			}
+		},
+		num: 2401,
+		gen: 9,
 	},
 	fairygem: {
 		name: "Fairy Gem",
@@ -1714,7 +1765,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 715,
 		gen: 6,
 		isNonstandard: "Past",
-		desc: "Holder's first successful Fairy-type attack will have 1.3x power. Single use.",
 	},
 	fairymemory: {
 		name: "Fairy Memory",
@@ -1730,7 +1780,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		itemUser: ["Silvally-Fairy"],
 		num: 920,
 		gen: 7,
-		desc: "Holder's Multi-Attack is Fairy type.",
+		isNonstandard: "Past",
 	},
 	fastball: {
 		name: "Fast Ball",
@@ -1738,7 +1788,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 492,
 		gen: 2,
 		isPokeball: true,
-		desc: "A Poke Ball that makes it easier to catch Pokemon which are quick to run away.",
 	},
 	fightinggem: {
 		name: "Fighting Gem",
@@ -1753,7 +1802,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 553,
 		gen: 5,
 		isNonstandard: "Past",
-		desc: "Holder's first successful Fighting-type attack will have 1.3x power. Single use.",
 	},
 	fightingmemory: {
 		name: "Fighting Memory",
@@ -1769,7 +1817,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		itemUser: ["Silvally-Fighting"],
 		num: 904,
 		gen: 7,
-		desc: "Holder's Multi-Attack is Fighting type.",
+		isNonstandard: "Past",
 	},
 	fightiniumz: {
 		name: "Fightinium Z",
@@ -1782,7 +1830,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 782,
 		gen: 7,
 		isNonstandard: "Past",
-		desc: "If holder has a Fighting move, this item allows it to use a Fighting Z-Move.",
 	},
 	figyberry: {
 		name: "Figy Berry",
@@ -1793,30 +1840,29 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 			type: "Bug",
 		},
 		onUpdate(pokemon) {
-			if (pokemon.hp <= pokemon.maxhp / 4 || (pokemon.hp <= pokemon.maxhp / 2 && pokemon.hasAbility('gluttony'))) {
+			if (pokemon.hp <= pokemon.maxhp / 4 || (pokemon.hp <= pokemon.maxhp / 2 &&
+				pokemon.hasAbility('gluttony') && pokemon.abilityState.gluttony)) {
 				pokemon.eatItem();
 			}
 		},
 		onTryEatItem(item, pokemon) {
-			if (!this.runEvent('TryHeal', pokemon)) return false;
+			if (!this.runEvent('TryHeal', pokemon, null, this.effect, pokemon.baseMaxhp / 3)) return false;
 		},
 		onEat(pokemon) {
-			this.heal(pokemon.baseMaxhp * 0.33);
+			this.heal(pokemon.baseMaxhp / 3);
 			if (pokemon.getNature().minus === 'atk') {
 				pokemon.addVolatile('confusion');
 			}
 		},
 		num: 159,
 		gen: 3,
-		desc: "Restores 33% max HP at 1/4 max HP or less; confuses if -Atk Nature. Single use.",
 	},
 	firegem: {
 		name: "Fire Gem",
 		spritenum: 141,
 		isGem: true,
 		onSourceTryPrimaryHit(target, source, move) {
-			const pledges = ['firepledge', 'grasspledge', 'waterpledge'];
-			if (target === source || move.category === 'Status' || pledges.includes(move.id)) return;
+			if (target === source || move.category === 'Status' || move.flags['pledgecombo']) return;
 			if (move.type === 'Fire' && source.useItem()) {
 				source.addVolatile('gem');
 			}
@@ -1824,7 +1870,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 548,
 		gen: 5,
 		isNonstandard: "Past",
-		desc: "Holder's first successful Fire-type attack will have 1.3x power. Single use.",
 	},
 	firememory: {
 		name: "Fire Memory",
@@ -1840,7 +1885,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		itemUser: ["Silvally-Fire"],
 		num: 912,
 		gen: 7,
-		desc: "Holder's Multi-Attack is Fire type.",
+		isNonstandard: "Past",
 	},
 	firestone: {
 		name: "Fire Stone",
@@ -1850,8 +1895,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		num: 82,
 		gen: 1,
-		desc: "Evolves Vulpix into Ninetales, Growlithe into Arcanine, Eevee into Flareon, and Pansear into Simisear when used.",
-		shortDesc: "Evolves certain species of Pokemon when used.",
 	},
 	firiumz: {
 		name: "Firium Z",
@@ -1864,7 +1907,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 777,
 		gen: 7,
 		isNonstandard: "Past",
-		desc: "If holder has a Fire move, this item allows it to use a Fire Z-Move.",
 	},
 	fistplate: {
 		name: "Fist Plate",
@@ -1873,7 +1915,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		onBasePowerPriority: 15,
 		onBasePower(basePower, user, target, move) {
 			if (move && move.type === 'Fighting') {
-				return this.chainModify([0x1333, 0x1000]);
+				return this.chainModify([4915, 4096]);
 			}
 		},
 		onTakeItem(item, pokemon, source) {
@@ -1885,8 +1927,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		forcedForme: "Arceus-Fighting",
 		num: 303,
 		gen: 4,
-		isNonstandard: "Unobtainable",
-		desc: "Holder's Fighting-type attacks have 1.2x power. Judgment is Fighting type.",
 	},
 	flameorb: {
 		name: "Flame Orb",
@@ -1895,14 +1935,13 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 			basePower: 30,
 			status: 'brn',
 		},
-		onResidualOrder: 26,
-		onResidualSubOrder: 2,
+		onResidualOrder: 28,
+		onResidualSubOrder: 3,
 		onResidual(pokemon) {
 			pokemon.trySetStatus('brn', pokemon);
 		},
 		num: 273,
 		gen: 4,
-		desc: "At the end of every turn, this item attempts to burn the holder.",
 	},
 	flameplate: {
 		name: "Flame Plate",
@@ -1911,7 +1950,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		onBasePowerPriority: 15,
 		onBasePower(basePower, user, target, move) {
 			if (move && move.type === 'Fire') {
-				return this.chainModify([0x1333, 0x1000]);
+				return this.chainModify([4915, 4096]);
 			}
 		},
 		onTakeItem(item, pokemon, source) {
@@ -1923,8 +1962,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		forcedForme: "Arceus-Fire",
 		num: 298,
 		gen: 4,
-		isNonstandard: "Unobtainable",
-		desc: "Holder's Fire-type attacks have 1.2x power. Judgment is Fire type.",
 	},
 	floatstone: {
 		name: "Float Stone",
@@ -1937,7 +1974,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		num: 539,
 		gen: 5,
-		desc: "Holder's weight is halved.",
 	},
 	flowersweet: {
 		name: "Flower Sweet",
@@ -1947,7 +1983,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		num: 1113,
 		gen: 8,
-		desc: "Evolves Milcery into Alcremie when held and spun around.",
 	},
 	flyinggem: {
 		name: "Flying Gem",
@@ -1962,7 +1997,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 556,
 		gen: 5,
 		isNonstandard: "Past",
-		desc: "Holder's first successful Flying-type attack will have 1.3x power. Single use.",
 	},
 	flyingmemory: {
 		name: "Flying Memory",
@@ -1978,7 +2012,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		itemUser: ["Silvally-Flying"],
 		num: 905,
 		gen: 7,
-		desc: "Holder's Multi-Attack is Flying type.",
+		isNonstandard: "Past",
 	},
 	flyiniumz: {
 		name: "Flyinium Z",
@@ -1991,7 +2025,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 785,
 		gen: 7,
 		isNonstandard: "Past",
-		desc: "If holder has a Flying move, this item allows it to use a Flying Z-Move.",
 	},
 	focusband: {
 		name: "Focus Band",
@@ -1999,6 +2032,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		fling: {
 			basePower: 10,
 		},
+		onDamagePriority: -40,
 		onDamage(damage, target, source, effect) {
 			if (this.randomChance(1, 10) && damage >= target.hp && effect && effect.effectType === 'Move') {
 				this.add("-activate", target, "item: Focus Band");
@@ -2007,7 +2041,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		num: 230,
 		gen: 2,
-		desc: "Holder has a 10% chance to survive an attack that would KO it with 1 HP.",
 	},
 	focussash: {
 		name: "Focus Sash",
@@ -2015,6 +2048,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		fling: {
 			basePower: 10,
 		},
+		onDamagePriority: -40,
 		onDamage(damage, target, source, effect) {
 			if (target.hp === target.maxhp && damage >= target.hp && effect && effect.effectType === 'Move') {
 				if (target.useItem()) {
@@ -2024,7 +2058,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		num: 275,
 		gen: 4,
-		desc: "If holder's HP is full, will survive an attack that would KO it with 1 HP. Single use.",
 	},
 	fossilizedbird: {
 		name: "Fossilized Bird",
@@ -2034,7 +2067,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		num: 1105,
 		gen: 8,
-		desc: "Can revive into Arctovish with Fossilized Fish or Arctozolt with Fossilized Dino.",
+		isNonstandard: "Past",
 	},
 	fossilizeddino: {
 		name: "Fossilized Dino",
@@ -2044,7 +2077,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		num: 1108,
 		gen: 8,
-		desc: "Can revive into Dracozolt with Fossilized Drake or Arctozolt with Fossilized Bird.",
+		isNonstandard: "Past",
 	},
 	fossilizeddrake: {
 		name: "Fossilized Drake",
@@ -2054,7 +2087,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		num: 1107,
 		gen: 8,
-		desc: "Can revive into Dracozolt with Fossilized Dino or Dracovish with Fossilized Fish.",
+		isNonstandard: "Past",
 	},
 	fossilizedfish: {
 		name: "Fossilized Fish",
@@ -2064,7 +2097,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		num: 1106,
 		gen: 8,
-		desc: "Can revive into Dracovish with Fossilized Drake or Arctovish with Fossilized Bird.",
+		isNonstandard: "Past",
 	},
 	friendball: {
 		name: "Friend Ball",
@@ -2072,7 +2105,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 497,
 		gen: 2,
 		isPokeball: true,
-		desc: "A Poke Ball that makes caught Pokemon more friendly.",
 	},
 	fullincense: {
 		name: "Full Incense",
@@ -2080,12 +2112,28 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		fling: {
 			basePower: 10,
 		},
-		onFractionalPriority(priority, pokemon) {
-			return Math.round(priority) - 0.1;
-		},
+		onFractionalPriority: -0.1,
 		num: 316,
 		gen: 4,
-		desc: "Holder moves last in its priority bracket.",
+		isNonstandard: "Past",
+	},
+	galaricacuff: {
+		name: "Galarica Cuff",
+		spritenum: 739,
+		fling: {
+			basePower: 30,
+		},
+		num: 1582,
+		gen: 8,
+	},
+	galaricawreath: {
+		name: "Galarica Wreath",
+		spritenum: 740,
+		fling: {
+			basePower: 30,
+		},
+		num: 1592,
+		gen: 8,
 	},
 	galladite: {
 		name: "Galladite",
@@ -2100,7 +2148,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 756,
 		gen: 6,
 		isNonstandard: "Past",
-		desc: "If held by a Gallade, this item allows it to Mega Evolve in battle.",
 	},
 	ganlonberry: {
 		name: "Ganlon Berry",
@@ -2111,16 +2158,16 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 			type: "Ice",
 		},
 		onUpdate(pokemon) {
-			if (pokemon.hp <= pokemon.maxhp / 4 || (pokemon.hp <= pokemon.maxhp / 2 && pokemon.hasAbility('gluttony'))) {
+			if (pokemon.hp <= pokemon.maxhp / 4 || (pokemon.hp <= pokemon.maxhp / 2 &&
+				pokemon.hasAbility('gluttony') && pokemon.abilityState.gluttony)) {
 				pokemon.eatItem();
 			}
 		},
 		onEat(pokemon) {
-			this.boost({def: 1});
+			this.boost({ def: 1 });
 		},
 		num: 202,
 		gen: 3,
-		desc: "Raises holder's Defense by 1 stage when at 1/4 max HP or less. Single use.",
 	},
 	garchompite: {
 		name: "Garchompite",
@@ -2135,7 +2182,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 683,
 		gen: 6,
 		isNonstandard: "Past",
-		desc: "If held by a Garchomp, this item allows it to Mega Evolve in battle.",
 	},
 	gardevoirite: {
 		name: "Gardevoirite",
@@ -2150,7 +2196,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 657,
 		gen: 6,
 		isNonstandard: "Past",
-		desc: "If held by a Gardevoir, this item allows it to Mega Evolve in battle.",
 	},
 	gengarite: {
 		name: "Gengarite",
@@ -2165,7 +2210,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 656,
 		gen: 6,
 		isNonstandard: "Past",
-		desc: "If held by a Gengar, this item allows it to Mega Evolve in battle.",
 	},
 	ghostgem: {
 		name: "Ghost Gem",
@@ -2180,7 +2224,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 560,
 		gen: 5,
 		isNonstandard: "Past",
-		desc: "Holder's first successful Ghost-type attack will have 1.3x power. Single use.",
 	},
 	ghostmemory: {
 		name: "Ghost Memory",
@@ -2196,7 +2239,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		itemUser: ["Silvally-Ghost"],
 		num: 910,
 		gen: 7,
-		desc: "Holder's Multi-Attack is Ghost type.",
+		isNonstandard: "Past",
 	},
 	ghostiumz: {
 		name: "Ghostium Z",
@@ -2209,7 +2252,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 789,
 		gen: 7,
 		isNonstandard: "Past",
-		desc: "If holder has a Ghost move, this item allows it to use a Ghost Z-Move.",
 	},
 	glalitite: {
 		name: "Glalitite",
@@ -2224,7 +2266,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 763,
 		gen: 6,
 		isNonstandard: "Past",
-		desc: "If held by a Glalie, this item allows it to Mega Evolve in battle.",
 	},
 	goldbottlecap: {
 		name: "Gold Bottle Cap",
@@ -2234,15 +2275,13 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		num: 796,
 		gen: 7,
-		desc: "Used for Hyper Training. All of a Pokemon's stats are calculated with an IV of 31.",
 	},
 	grassgem: {
 		name: "Grass Gem",
 		spritenum: 172,
 		isGem: true,
 		onSourceTryPrimaryHit(target, source, move) {
-			const pledges = ['firepledge', 'grasspledge', 'waterpledge'];
-			if (target === source || move.category === 'Status' || pledges.includes(move.id)) return;
+			if (target === source || move.category === 'Status' || move.flags['pledgecombo']) return;
 			if (move.type === 'Grass' && source.useItem()) {
 				source.addVolatile('gem');
 			}
@@ -2250,7 +2289,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 551,
 		gen: 5,
 		isNonstandard: "Past",
-		desc: "Holder's first successful Grass-type attack will have 1.3x power. Single use.",
 	},
 	grassmemory: {
 		name: "Grass Memory",
@@ -2266,7 +2304,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		itemUser: ["Silvally-Grass"],
 		num: 914,
 		gen: 7,
-		desc: "Holder's Multi-Attack is Grass type.",
+		isNonstandard: "Past",
 	},
 	grassiumz: {
 		name: "Grassium Z",
@@ -2279,7 +2317,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 780,
 		gen: 7,
 		isNonstandard: "Past",
-		desc: "If holder has a Grass move, this item allows it to use a Grass Z-Move.",
 	},
 	grassyseed: {
 		name: "Grassy Seed",
@@ -2287,13 +2324,13 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		fling: {
 			basePower: 10,
 		},
+		onSwitchInPriority: -1,
 		onStart(pokemon) {
 			if (!pokemon.ignoringItem() && this.field.isTerrain('grassyterrain')) {
 				pokemon.useItem();
 			}
 		},
-		onAnyTerrainStart() {
-			const pokemon = this.effectData.target;
+		onTerrainChange(pokemon) {
 			if (this.field.isTerrain('grassyterrain')) {
 				pokemon.useItem();
 			}
@@ -2303,7 +2340,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		num: 884,
 		gen: 7,
-		desc: "If the terrain is Grassy Terrain, raises holder's Defense by 1 stage. Single use.",
 	},
 	greatball: {
 		name: "Great Ball",
@@ -2311,7 +2347,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 3,
 		gen: 1,
 		isPokeball: true,
-		desc: "A high-performance Ball that provides a higher catch rate than a Poke Ball.",
 	},
 	grepaberry: {
 		name: "Grepa Berry",
@@ -2324,7 +2359,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		onEat: false,
 		num: 173,
 		gen: 3,
-		desc: "Cannot be eaten by the holder. No effect when eaten with Bug Bite or Pluck.",
 	},
 	gripclaw: {
 		name: "Grip Claw",
@@ -2335,7 +2369,26 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		// implemented in statuses
 		num: 286,
 		gen: 4,
-		desc: "Holder's partial-trapping moves always last 7 turns.",
+	},
+	griseouscore: {
+		name: "Griseous Core",
+		spritenum: 743,
+		onBasePowerPriority: 15,
+		onBasePower(basePower, user, target, move) {
+			if (user.baseSpecies.num === 487 && (move.type === 'Ghost' || move.type === 'Dragon')) {
+				return this.chainModify([4915, 4096]);
+			}
+		},
+		onTakeItem(item, pokemon, source) {
+			if (source?.baseSpecies.num === 487 || pokemon.baseSpecies.num === 487) {
+				return false;
+			}
+			return true;
+		},
+		forcedForme: "Giratina-Origin",
+		itemUser: ["Giratina-Origin"],
+		num: 1779,
+		gen: 8,
 	},
 	griseousorb: {
 		name: "Griseous Orb",
@@ -2346,21 +2399,12 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		onBasePowerPriority: 15,
 		onBasePower(basePower, user, target, move) {
 			if (user.baseSpecies.num === 487 && (move.type === 'Ghost' || move.type === 'Dragon')) {
-				return this.chainModify([0x1333, 0x1000]);
+				return this.chainModify([4915, 4096]);
 			}
 		},
-		onTakeItem(item, pokemon, source) {
-			if ((source && source.baseSpecies.num === 487) || pokemon.baseSpecies.num === 487) {
-				return false;
-			}
-			return true;
-		},
-		forcedForme: "Giratina-Origin",
-		itemUser: ["Giratina-Origin"],
+		itemUser: ["Giratina"],
 		num: 112,
 		gen: 4,
-		isNonstandard: "Past",
-		desc: "If held by a Giratina, its Ghost- and Dragon-type attacks have 1.2x power.",
 	},
 	groundgem: {
 		name: "Ground Gem",
@@ -2375,7 +2419,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 555,
 		gen: 5,
 		isNonstandard: "Past",
-		desc: "Holder's first successful Ground-type attack will have 1.3x power. Single use.",
 	},
 	groundmemory: {
 		name: "Ground Memory",
@@ -2391,7 +2434,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		itemUser: ["Silvally-Ground"],
 		num: 907,
 		gen: 7,
-		desc: "Holder's Multi-Attack is Ground type.",
+		isNonstandard: "Past",
 	},
 	groundiumz: {
 		name: "Groundium Z",
@@ -2404,7 +2447,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 784,
 		gen: 7,
 		isNonstandard: "Past",
-		desc: "If holder has a Ground move, this item allows it to use a Ground Z-Move.",
 	},
 	gyaradosite: {
 		name: "Gyaradosite",
@@ -2419,7 +2461,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 676,
 		gen: 6,
 		isNonstandard: "Past",
-		desc: "If held by a Gyarados, this item allows it to Mega Evolve in battle.",
 	},
 	habanberry: {
 		name: "Haban Berry",
@@ -2431,7 +2472,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		onSourceModifyDamage(damage, source, target, move) {
 			if (move.type === 'Dragon' && target.getMoveHitData(move).typeMod > 0) {
-				const hitSub = target.volatiles['substitute'] && !move.flags['authentic'] && !(move.infiltrates && this.gen >= 6);
+				const hitSub = target.volatiles['substitute'] && !move.flags['bypasssub'] && !(move.infiltrates && this.gen >= 6);
 				if (hitSub) return;
 
 				if (target.eatItem()) {
@@ -2444,7 +2485,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		onEat() { },
 		num: 197,
 		gen: 4,
-		desc: "Halves damage taken from a supereffective Dragon-type attack. Single use.",
 	},
 	hardstone: {
 		name: "Hard Stone",
@@ -2455,12 +2495,11 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		onBasePowerPriority: 15,
 		onBasePower(basePower, user, target, move) {
 			if (move && move.type === 'Rock') {
-				return this.chainModify([0x1333, 0x1000]);
+				return this.chainModify([4915, 4096]);
 			}
 		},
 		num: 238,
 		gen: 2,
-		desc: "Holder's Rock-type attacks have 1.2x power.",
 	},
 	healball: {
 		name: "Heal Ball",
@@ -2468,7 +2507,27 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 14,
 		gen: 4,
 		isPokeball: true,
-		desc: "A remedial Poke Ball that restores the caught Pokemon's HP and status problem.",
+	},
+	hearthflamemask: {
+		name: "Hearthflame Mask",
+		spritenum: 760,
+		fling: {
+			basePower: 60,
+		},
+		onBasePowerPriority: 15,
+		onBasePower(basePower, user, target, move) {
+			if (user.baseSpecies.name.startsWith('Ogerpon-Hearthflame')) {
+				return this.chainModify([4915, 4096]);
+			}
+		},
+		onTakeItem(item, source) {
+			if (source.baseSpecies.baseSpecies === 'Ogerpon') return false;
+			return true;
+		},
+		forcedForme: "Ogerpon-Hearthflame",
+		itemUser: ["Ogerpon-Hearthflame"],
+		num: 2408,
+		gen: 9,
 	},
 	heatrock: {
 		name: "Heat Rock",
@@ -2478,7 +2537,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		num: 284,
 		gen: 4,
-		desc: "Holder's use of Sunny Day lasts 8 turns instead of 5.",
 	},
 	heavyball: {
 		name: "Heavy Ball",
@@ -2486,7 +2544,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 495,
 		gen: 2,
 		isPokeball: true,
-		desc: "A Poke Ball for catching very heavy Pokemon.",
 	},
 	heavydutyboots: {
 		name: "Heavy-Duty Boots",
@@ -2496,8 +2553,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		num: 1120,
 		gen: 8,
-		desc: "When switching in, the holder is unaffected by hazards on its side of the field.",
-		// Hazard Immunity implemented in moves.js
+		// Hazard Immunity implemented in moves.ts
 	},
 	helixfossil: {
 		name: "Helix Fossil",
@@ -2508,7 +2564,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 101,
 		gen: 3,
 		isNonstandard: "Past",
-		desc: "Can be revived into Omanyte.",
 	},
 	heracronite: {
 		name: "Heracronite",
@@ -2523,7 +2578,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 680,
 		gen: 6,
 		isNonstandard: "Past",
-		desc: "If held by a Heracross, this item allows it to Mega Evolve in battle.",
 	},
 	hondewberry: {
 		name: "Hondew Berry",
@@ -2536,7 +2590,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		onEat: false,
 		num: 172,
 		gen: 3,
-		desc: "Cannot be eaten by the holder. No effect when eaten with Bug Bite or Pluck.",
 	},
 	houndoominite: {
 		name: "Houndoominite",
@@ -2551,7 +2604,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 666,
 		gen: 6,
 		isNonstandard: "Past",
-		desc: "If held by a Houndoom, this item allows it to Mega Evolve in battle.",
 	},
 	iapapaberry: {
 		name: "Iapapa Berry",
@@ -2562,22 +2614,22 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 			type: "Dark",
 		},
 		onUpdate(pokemon) {
-			if (pokemon.hp <= pokemon.maxhp / 4 || (pokemon.hp <= pokemon.maxhp / 2 && pokemon.hasAbility('gluttony'))) {
+			if (pokemon.hp <= pokemon.maxhp / 4 || (pokemon.hp <= pokemon.maxhp / 2 &&
+				pokemon.hasAbility('gluttony') && pokemon.abilityState.gluttony)) {
 				pokemon.eatItem();
 			}
 		},
 		onTryEatItem(item, pokemon) {
-			if (!this.runEvent('TryHeal', pokemon)) return false;
+			if (!this.runEvent('TryHeal', pokemon, null, this.effect, pokemon.baseMaxhp / 3)) return false;
 		},
 		onEat(pokemon) {
-			this.heal(pokemon.baseMaxhp * 0.33);
+			this.heal(pokemon.baseMaxhp / 3);
 			if (pokemon.getNature().minus === 'def') {
 				pokemon.addVolatile('confusion');
 			}
 		},
 		num: 163,
 		gen: 3,
-		desc: "Restores 33% max HP at 1/4 max HP or less; confuses if -Def Nature. Single use.",
 	},
 	icegem: {
 		name: "Ice Gem",
@@ -2592,7 +2644,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 552,
 		gen: 5,
 		isNonstandard: "Past",
-		desc: "Holder's first successful Ice-type attack will have 1.3x power. Single use.",
 	},
 	icememory: {
 		name: "Ice Memory",
@@ -2608,7 +2659,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		itemUser: ["Silvally-Ice"],
 		num: 917,
 		gen: 7,
-		desc: "Holder's Multi-Attack is Ice type.",
+		isNonstandard: "Past",
 	},
 	icestone: {
 		name: "Ice Stone",
@@ -2618,8 +2669,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		num: 849,
 		gen: 7,
-		desc: "Evolves Alolan Sandshrew into Alolan Sandslash, Alolan Vulpix into Alolan Ninetales, Eevee into Glaceon, and Galarian Darumaka into Galarian Darmanitan when used.",
-		shortDesc: "Evolves certain species of Pokemon when used.",
 	},
 	icicleplate: {
 		name: "Icicle Plate",
@@ -2628,7 +2677,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		onBasePowerPriority: 15,
 		onBasePower(basePower, user, target, move) {
 			if (move.type === 'Ice') {
-				return this.chainModify([0x1333, 0x1000]);
+				return this.chainModify([4915, 4096]);
 			}
 		},
 		onTakeItem(item, pokemon, source) {
@@ -2640,8 +2689,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		forcedForme: "Arceus-Ice",
 		num: 302,
 		gen: 4,
-		isNonstandard: "Unobtainable",
-		desc: "Holder's Ice-type attacks have 1.2x power. Judgment is Ice type.",
 	},
 	iciumz: {
 		name: "Icium Z",
@@ -2654,7 +2701,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 781,
 		gen: 7,
 		isNonstandard: "Past",
-		desc: "If holder has an Ice move, this item allows it to use an Ice Z-Move.",
 	},
 	icyrock: {
 		name: "Icy Rock",
@@ -2664,7 +2710,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		num: 282,
 		gen: 4,
-		desc: "Holder's use of Hail lasts 8 turns instead of 5.",
 	},
 	inciniumz: {
 		name: "Incinium Z",
@@ -2676,7 +2721,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 799,
 		gen: 7,
 		isNonstandard: "Past",
-		desc: "If held by an Incineroar with Darkest Lariat, it can use Malicious Moonsault.",
 	},
 	insectplate: {
 		name: "Insect Plate",
@@ -2685,7 +2729,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		onBasePowerPriority: 15,
 		onBasePower(basePower, user, target, move) {
 			if (move.type === 'Bug') {
-				return this.chainModify([0x1333, 0x1000]);
+				return this.chainModify([4915, 4096]);
 			}
 		},
 		onTakeItem(item, pokemon, source) {
@@ -2697,8 +2741,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		forcedForme: "Arceus-Bug",
 		num: 308,
 		gen: 4,
-		isNonstandard: "Unobtainable",
-		desc: "Holder's Bug-type attacks have 1.2x power. Judgment is Bug type.",
 	},
 	ironball: {
 		name: "Iron Ball",
@@ -2717,7 +2759,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		num: 278,
 		gen: 4,
-		desc: "Holder is grounded, Speed halved. If Flying type, takes neutral Ground damage.",
 	},
 	ironplate: {
 		name: "Iron Plate",
@@ -2726,7 +2767,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		onBasePowerPriority: 15,
 		onBasePower(basePower, user, target, move) {
 			if (move.type === 'Steel') {
-				return this.chainModify([0x1333, 0x1000]);
+				return this.chainModify([4915, 4096]);
 			}
 		},
 		onTakeItem(item, pokemon, source) {
@@ -2738,8 +2779,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		forcedForme: "Arceus-Steel",
 		num: 313,
 		gen: 4,
-		isNonstandard: "Unobtainable",
-		desc: "Holder's Steel-type attacks have 1.2x power. Judgment is Steel type.",
 	},
 	jabocaberry: {
 		name: "Jaboca Berry",
@@ -2750,17 +2789,15 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 			type: "Dragon",
 		},
 		onDamagingHit(damage, target, source, move) {
-			if (move.category === 'Physical') {
+			if (move.category === 'Physical' && source.hp && source.isActive && !source.hasAbility('magicguard')) {
 				if (target.eatItem()) {
-					this.damage(source.baseMaxhp / 8, source, target);
+					this.damage(source.baseMaxhp / (target.hasAbility('ripen') ? 4 : 8), source, target);
 				}
 			}
 		},
 		onEat() { },
 		num: 211,
 		gen: 4,
-		isNonstandard: "Unobtainable",
-		desc: "If holder is hit by a physical move, attacker loses 1/8 of its max HP. Single use.",
 	},
 	jawfossil: {
 		name: "Jaw Fossil",
@@ -2771,7 +2808,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 710,
 		gen: 6,
 		isNonstandard: "Past",
-		desc: "Can be revived into Tyrunt.",
 	},
 	kasibberry: {
 		name: "Kasib Berry",
@@ -2783,7 +2819,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		onSourceModifyDamage(damage, source, target, move) {
 			if (move.type === 'Ghost' && target.getMoveHitData(move).typeMod > 0) {
-				const hitSub = target.volatiles['substitute'] && !move.flags['authentic'] && !(move.infiltrates && this.gen >= 6);
+				const hitSub = target.volatiles['substitute'] && !move.flags['bypasssub'] && !(move.infiltrates && this.gen >= 6);
 				if (hitSub) return;
 
 				if (target.eatItem()) {
@@ -2796,7 +2832,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		onEat() { },
 		num: 196,
 		gen: 4,
-		desc: "Halves damage taken from a supereffective Ghost-type attack. Single use.",
 	},
 	kebiaberry: {
 		name: "Kebia Berry",
@@ -2808,7 +2843,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		onSourceModifyDamage(damage, source, target, move) {
 			if (move.type === 'Poison' && target.getMoveHitData(move).typeMod > 0) {
-				const hitSub = target.volatiles['substitute'] && !move.flags['authentic'] && !(move.infiltrates && this.gen >= 6);
+				const hitSub = target.volatiles['substitute'] && !move.flags['bypasssub'] && !(move.infiltrates && this.gen >= 6);
 				if (hitSub) return;
 
 				if (target.eatItem()) {
@@ -2821,7 +2856,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		onEat() { },
 		num: 190,
 		gen: 4,
-		desc: "Halves damage taken from a supereffective Poison-type attack. Single use.",
 	},
 	keeberry: {
 		name: "Kee Berry",
@@ -2838,11 +2872,10 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 			}
 		},
 		onEat(pokemon) {
-			this.boost({def: 1});
+			this.boost({ def: 1 });
 		},
 		num: 687,
 		gen: 6,
-		desc: "Raises holder's Defense by 1 stage after it is hit by a physical attack. Single use.",
 	},
 	kelpsyberry: {
 		name: "Kelpsy Berry",
@@ -2855,7 +2888,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		onEat: false,
 		num: 170,
 		gen: 3,
-		desc: "Cannot be eaten by the holder. No effect when eaten with Bug Bite or Pluck.",
 	},
 	kangaskhanite: {
 		name: "Kangaskhanite",
@@ -2870,7 +2902,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 675,
 		gen: 6,
 		isNonstandard: "Past",
-		desc: "If held by a Kangaskhan, this item allows it to Mega Evolve in battle.",
 	},
 	kingsrock: {
 		name: "King's Rock",
@@ -2894,8 +2925,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		num: 221,
 		gen: 2,
-		desc: "Holder's attacks without a chance to flinch gain a 10% chance to flinch. Evolves Poliwhirl into Politoed and Slowpoke into Slowking when traded.",
-		shortDesc: "Holder's attacks without a chance to flinch gain a 10% chance to flinch.",
 	},
 	kommoniumz: {
 		name: "Kommonium Z",
@@ -2907,7 +2936,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 926,
 		gen: 7,
 		isNonstandard: "Past",
-		desc: "If held by a Kommo-o with Clanging Scales, it can use Clangorous Soulblaze.",
 	},
 	laggingtail: {
 		name: "Lagging Tail",
@@ -2915,12 +2943,9 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		fling: {
 			basePower: 10,
 		},
-		onFractionalPriority(priority, pokemon) {
-			return Math.round(priority) - 0.1;
-		},
+		onFractionalPriority: -0.1,
 		num: 279,
 		gen: 4,
-		desc: "Holder moves last in its priority bracket.",
 	},
 	lansatberry: {
 		name: "Lansat Berry",
@@ -2931,7 +2956,8 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 			type: "Flying",
 		},
 		onUpdate(pokemon) {
-			if (pokemon.hp <= pokemon.maxhp / 4 || (pokemon.hp <= pokemon.maxhp / 2 && pokemon.hasAbility('gluttony'))) {
+			if (pokemon.hp <= pokemon.maxhp / 4 || (pokemon.hp <= pokemon.maxhp / 2 &&
+				pokemon.hasAbility('gluttony') && pokemon.abilityState.gluttony)) {
 				pokemon.eatItem();
 			}
 		},
@@ -2940,7 +2966,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		num: 206,
 		gen: 3,
-		desc: "Holder gains the Focus Energy effect when at 1/4 max HP or less. Single use.",
 	},
 	latiasite: {
 		name: "Latiasite",
@@ -2955,7 +2980,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 684,
 		gen: 6,
 		isNonstandard: "Past",
-		desc: "If held by a Latias, this item allows it to Mega Evolve in battle.",
 	},
 	latiosite: {
 		name: "Latiosite",
@@ -2970,7 +2994,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 685,
 		gen: 6,
 		isNonstandard: "Past",
-		desc: "If held by a Latios, this item allows it to Mega Evolve in battle.",
 	},
 	laxincense: {
 		name: "Lax Incense",
@@ -2978,14 +3001,15 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		fling: {
 			basePower: 10,
 		},
+		onModifyAccuracyPriority: -2,
 		onModifyAccuracy(accuracy) {
 			if (typeof accuracy !== 'number') return;
 			this.debug('lax incense - decreasing accuracy');
-			return accuracy * 0.9;
+			return this.chainModify([3686, 4096]);
 		},
 		num: 255,
 		gen: 3,
-		desc: "The accuracy of attacks against the holder is 0.9x.",
+		isNonstandard: "Past",
 	},
 	leafstone: {
 		name: "Leaf Stone",
@@ -2995,8 +3019,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		num: 85,
 		gen: 1,
-		desc: "Evolves Gloom into Vileplume, Weepinbell into Victreebel, Exeggcute into Exeggutor or Alolan Exeggutor, Eevee into Leafeon, Nuzleaf into Shiftry, and Pansage into Simisage when used.",
-		shortDesc: "Evolves certain species of Pokemon when used.",
 	},
 	leek: {
 		name: "Leek",
@@ -3005,14 +3027,14 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		spritenum: 475,
 		onModifyCritRatio(critRatio, user) {
-			if (["farfetchd", "sirfetchd"].includes(toID(user.baseSpecies.baseSpecies))) {
+			if (["farfetchd", "sirfetchd"].includes(this.toID(user.baseSpecies.baseSpecies))) {
 				return critRatio + 2;
 			}
 		},
-		itemUser: ["Farfetch\u2019d", "Sirfetch\u2019d"],
+		itemUser: ["Farfetch\u2019d", "Farfetch\u2019d-Galar", "Sirfetch\u2019d"],
 		num: 259,
 		gen: 8,
-		desc: "If held by a Farfetch\u2019d or Sirfetch\u2019d, its critical hit ratio is raised by 2 stages.",
+		isNonstandard: "Past",
 	},
 	leftovers: {
 		name: "Leftovers",
@@ -3021,18 +3043,12 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 			basePower: 10,
 		},
 		onResidualOrder: 5,
-		onResidualSubOrder: 5,
+		onResidualSubOrder: 4,
 		onResidual(pokemon) {
-			if (this.field.isTerrain('grassyterrain')) return;
-			this.heal(pokemon.baseMaxhp / 16);
-		},
-		onTerrain(pokemon) {
-			if (!this.field.isTerrain('grassyterrain')) return;
 			this.heal(pokemon.baseMaxhp / 16);
 		},
 		num: 234,
 		gen: 2,
-		desc: "At the end of every turn, holder restores 1/16 of its max HP.",
 	},
 	leppaberry: {
 		name: "Leppa Berry",
@@ -3058,7 +3074,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		num: 154,
 		gen: 3,
-		desc: "Restores 10 PP to the first of the holder's moves to reach 0 PP. Single use.",
 	},
 	levelball: {
 		name: "Level Ball",
@@ -3066,7 +3081,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 493,
 		gen: 2,
 		isPokeball: true,
-		desc: "A Poke Ball for catching Pokemon that are a lower level than your own.",
 	},
 	liechiberry: {
 		name: "Liechi Berry",
@@ -3077,16 +3091,16 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 			type: "Grass",
 		},
 		onUpdate(pokemon) {
-			if (pokemon.hp <= pokemon.maxhp / 4 || (pokemon.hp <= pokemon.maxhp / 2 && pokemon.hasAbility('gluttony'))) {
+			if (pokemon.hp <= pokemon.maxhp / 4 || (pokemon.hp <= pokemon.maxhp / 2 &&
+				pokemon.hasAbility('gluttony') && pokemon.abilityState.gluttony)) {
 				pokemon.eatItem();
 			}
 		},
 		onEat(pokemon) {
-			this.boost({atk: 1});
+			this.boost({ atk: 1 });
 		},
 		num: 201,
 		gen: 3,
-		desc: "Raises holder's Attack by 1 stage when at 1/4 max HP or less. Single use.",
 	},
 	lifeorb: {
 		name: "Life Orb",
@@ -3095,16 +3109,15 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 			basePower: 30,
 		},
 		onModifyDamage(damage, source, target, move) {
-			return this.chainModify([0x14CC, 0x1000]);
+			return this.chainModify([5324, 4096]);
 		},
 		onAfterMoveSecondarySelf(source, target, move) {
-			if (source && source !== target && move && move.category !== 'Status') {
-				this.damage(source.baseMaxhp / 10, source, source, this.dex.getItem('lifeorb'));
+			if (source && source !== target && move && move.category !== 'Status' && !source.forceSwitchFlag) {
+				this.damage(source.baseMaxhp / 10, source, source, this.dex.items.get('lifeorb'));
 			}
 		},
 		num: 270,
 		gen: 4,
-		desc: "Holder's attacks do 1.3x damage, and it loses 1/10 its max HP after the attack.",
 	},
 	lightball: {
 		name: "Light Ball",
@@ -3125,10 +3138,9 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 				return this.chainModify(2);
 			}
 		},
-		itemUser: ["Pikachu"],
+		itemUser: ["Pikachu", "Pikachu-Cosplay", "Pikachu-Rock-Star", "Pikachu-Belle", "Pikachu-Pop-Star", "Pikachu-PhD", "Pikachu-Libre", "Pikachu-Original", "Pikachu-Hoenn", "Pikachu-Sinnoh", "Pikachu-Unova", "Pikachu-Kalos", "Pikachu-Alola", "Pikachu-Partner", "Pikachu-Starter", "Pikachu-World"],
 		num: 236,
 		gen: 2,
-		desc: "If held by a Pikachu, its Attack and Sp. Atk are doubled.",
 	},
 	lightclay: {
 		name: "Light Clay",
@@ -3139,7 +3151,21 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		// implemented in the corresponding thing
 		num: 269,
 		gen: 4,
-		desc: "Holder's use of Aurora Veil, Light Screen, or Reflect lasts 8 turns instead of 5.",
+	},
+	loadeddice: {
+		name: "Loaded Dice",
+		spritenum: 751,
+		fling: {
+			basePower: 30,
+		},
+		// partially implemented in sim/battle-actions.ts:BattleActions#hitStepMoveHitLoop
+		onModifyMove(move) {
+			if (move.multiaccuracy) {
+				delete move.multiaccuracy;
+			}
+		},
+		num: 1886,
+		gen: 9,
 	},
 	lopunnite: {
 		name: "Lopunnite",
@@ -3154,7 +3180,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 768,
 		gen: 6,
 		isNonstandard: "Past",
-		desc: "If held by a Lopunny, this item allows it to Mega Evolve in battle.",
 	},
 	loveball: {
 		name: "Love Ball",
@@ -3162,7 +3187,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 496,
 		gen: 2,
 		isPokeball: true,
-		desc: "Poke Ball for catching Pokemon that are the opposite gender of your Pokemon.",
 	},
 	lovesweet: {
 		name: "Love Sweet",
@@ -3172,7 +3196,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		num: 1110,
 		gen: 8,
-		desc: "Evolves Milcery into Alcremie when held and spun around.",
 	},
 	lucarionite: {
 		name: "Lucarionite",
@@ -3187,7 +3210,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 673,
 		gen: 6,
 		isNonstandard: "Past",
-		desc: "If held by a Lucario, this item allows it to Mega Evolve in battle.",
 	},
 	luckypunch: {
 		name: "Lucky Punch",
@@ -3204,7 +3226,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 256,
 		gen: 2,
 		isNonstandard: "Past",
-		desc: "If held by a Chansey, its critical hit ratio is raised by 2 stages.",
 	},
 	lumberry: {
 		name: "Lum Berry",
@@ -3214,6 +3235,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 			basePower: 80,
 			type: "Flying",
 		},
+		onAfterSetStatusPriority: -1,
 		onAfterSetStatus(status, pokemon) {
 			pokemon.eatItem();
 		},
@@ -3228,7 +3250,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		num: 157,
 		gen: 3,
-		desc: "Holder cures itself if it is confused or has a major status condition. Single use.",
 	},
 	luminousmoss: {
 		name: "Luminous Moss",
@@ -3246,7 +3267,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		num: 648,
 		gen: 6,
-		desc: "Raises holder's Sp. Def by 1 stage if hit by a Water-type attack. Single use.",
 	},
 	lunaliumz: {
 		name: "Lunalium Z",
@@ -3258,7 +3278,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 922,
 		gen: 7,
 		isNonstandard: "Past",
-		desc: "Lunala or Dawn Wings Necrozma with Moongeist Beam can use a special Z-Move.",
 	},
 	lureball: {
 		name: "Lure Ball",
@@ -3266,7 +3285,26 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 494,
 		gen: 2,
 		isPokeball: true,
-		desc: "A Poke Ball for catching Pokemon hooked by a Rod when fishing.",
+	},
+	lustrousglobe: {
+		name: "Lustrous Globe",
+		spritenum: 742,
+		onBasePowerPriority: 15,
+		onBasePower(basePower, user, target, move) {
+			if (user.baseSpecies.num === 484 && (move.type === 'Water' || move.type === 'Dragon')) {
+				return this.chainModify([4915, 4096]);
+			}
+		},
+		onTakeItem(item, pokemon, source) {
+			if (source?.baseSpecies.num === 484 || pokemon.baseSpecies.num === 484) {
+				return false;
+			}
+			return true;
+		},
+		forcedForme: "Palkia-Origin",
+		itemUser: ["Palkia-Origin"],
+		num: 1778,
+		gen: 8,
 	},
 	lustrousorb: {
 		name: "Lustrous Orb",
@@ -3276,15 +3314,13 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		onBasePowerPriority: 15,
 		onBasePower(basePower, user, target, move) {
-			if (move && user.baseSpecies.name === 'Palkia' && (move.type === 'Water' || move.type === 'Dragon')) {
-				return this.chainModify([0x1333, 0x1000]);
+			if (user.baseSpecies.num === 484 && (move.type === 'Water' || move.type === 'Dragon')) {
+				return this.chainModify([4915, 4096]);
 			}
 		},
 		itemUser: ["Palkia"],
 		num: 136,
 		gen: 4,
-		isNonstandard: "Past",
-		desc: "If held by a Palkia, its Water- and Dragon-type attacks have 1.2x power.",
 	},
 	luxuryball: {
 		name: "Luxury Ball",
@@ -3292,7 +3328,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 11,
 		gen: 3,
 		isPokeball: true,
-		desc: "A comfortable Poke Ball that makes a caught wild Pokemon quickly grow friendly.",
 	},
 	lycaniumz: {
 		name: "Lycanium Z",
@@ -3304,7 +3339,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 925,
 		gen: 7,
 		isNonstandard: "Past",
-		desc: "If held by a Lycanroc forme with Stone Edge, it can use Splintered Stormshards.",
 	},
 	machobrace: {
 		name: "Macho Brace",
@@ -3318,7 +3352,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		num: 215,
 		gen: 3,
-		desc: "Holder's Speed is halved. The Klutz Ability does not ignore this effect.",
+		isNonstandard: "Past",
 	},
 	magmarizer: {
 		name: "Magmarizer",
@@ -3328,7 +3362,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		num: 323,
 		gen: 4,
-		desc: "Evolves Magmar into Magmortar when traded.",
 	},
 	magnet: {
 		name: "Magnet",
@@ -3339,12 +3372,11 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		onBasePowerPriority: 15,
 		onBasePower(basePower, user, target, move) {
 			if (move.type === 'Electric') {
-				return this.chainModify([0x1333, 0x1000]);
+				return this.chainModify([4915, 4096]);
 			}
 		},
 		num: 242,
 		gen: 2,
-		desc: "Holder's Electric-type attacks have 1.2x power.",
 	},
 	magoberry: {
 		name: "Mago Berry",
@@ -3355,22 +3387,22 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 			type: "Ghost",
 		},
 		onUpdate(pokemon) {
-			if (pokemon.hp <= pokemon.maxhp / 4 || (pokemon.hp <= pokemon.maxhp / 2 && pokemon.hasAbility('gluttony'))) {
+			if (pokemon.hp <= pokemon.maxhp / 4 || (pokemon.hp <= pokemon.maxhp / 2 &&
+				pokemon.hasAbility('gluttony') && pokemon.abilityState.gluttony)) {
 				pokemon.eatItem();
 			}
 		},
 		onTryEatItem(item, pokemon) {
-			if (!this.runEvent('TryHeal', pokemon)) return false;
+			if (!this.runEvent('TryHeal', pokemon, null, this.effect, pokemon.baseMaxhp / 3)) return false;
 		},
 		onEat(pokemon) {
-			this.heal(pokemon.baseMaxhp * 0.33);
+			this.heal(pokemon.baseMaxhp / 3);
 			if (pokemon.getNature().minus === 'spe') {
 				pokemon.addVolatile('confusion');
 			}
 		},
 		num: 161,
 		gen: 3,
-		desc: "Restores 33% max HP at 1/4 max HP or less; confuses if -Spe Nature. Single use.",
 	},
 	magostberry: {
 		name: "Magost Berry",
@@ -3384,7 +3416,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 176,
 		gen: 3,
 		isNonstandard: "Past",
-		desc: "Cannot be eaten by the holder. No effect when eaten with Bug Bite or Pluck.",
 	},
 	mail: {
 		name: "Mail",
@@ -3393,10 +3424,18 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 			if (!this.activeMove) return false;
 			if (this.activeMove.id !== 'knockoff' && this.activeMove.id !== 'thief' && this.activeMove.id !== 'covet') return false;
 		},
-		num: 0,
+		num: 137,
 		gen: 2,
 		isNonstandard: "Past",
-		desc: "Cannot be given to or taken from a Pokemon, except by Covet/Knock Off/Thief.",
+	},
+	maliciousarmor: {
+		name: "Malicious Armor",
+		spritenum: 744,
+		fling: {
+			basePower: 30,
+		},
+		num: 1861,
+		gen: 9,
 	},
 	manectite: {
 		name: "Manectite",
@@ -3411,7 +3450,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 682,
 		gen: 6,
 		isNonstandard: "Past",
-		desc: "If held by a Manectric, this item allows it to Mega Evolve in battle.",
 	},
 	marangaberry: {
 		name: "Maranga Berry",
@@ -3427,11 +3465,10 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 			}
 		},
 		onEat(pokemon) {
-			this.boost({spd: 1});
+			this.boost({ spd: 1 });
 		},
 		num: 688,
 		gen: 6,
-		desc: "Raises holder's Sp. Def by 1 stage after it is hit by a special attack. Single use.",
 	},
 	marshadiumz: {
 		name: "Marshadium Z",
@@ -3443,7 +3480,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 802,
 		gen: 7,
 		isNonstandard: "Past",
-		desc: "If held by Marshadow with Spectral Thief, it can use Soul-Stealing 7-Star Strike.",
 	},
 	masterball: {
 		name: "Master Ball",
@@ -3451,7 +3487,15 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 1,
 		gen: 1,
 		isPokeball: true,
-		desc: "The best Ball with the ultimate performance. It will catch any wild Pokemon.",
+	},
+	masterpieceteacup: {
+		name: "Masterpiece Teacup",
+		spritenum: 757,
+		fling: {
+			basePower: 80,
+		},
+		num: 2404,
+		gen: 9,
 	},
 	mawilite: {
 		name: "Mawilite",
@@ -3466,7 +3510,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 681,
 		gen: 6,
 		isNonstandard: "Past",
-		desc: "If held by a Mawile, this item allows it to Mega Evolve in battle.",
 	},
 	meadowplate: {
 		name: "Meadow Plate",
@@ -3475,7 +3518,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		onBasePowerPriority: 15,
 		onBasePower(basePower, user, target, move) {
 			if (move.type === 'Grass') {
-				return this.chainModify([0x1333, 0x1000]);
+				return this.chainModify([4915, 4096]);
 			}
 		},
 		onTakeItem(item, pokemon, source) {
@@ -3487,8 +3530,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		forcedForme: "Arceus-Grass",
 		num: 301,
 		gen: 4,
-		isNonstandard: "Unobtainable",
-		desc: "Holder's Grass-type attacks have 1.2x power. Judgment is Grass type.",
 	},
 	medichamite: {
 		name: "Medichamite",
@@ -3503,7 +3544,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 665,
 		gen: 6,
 		isNonstandard: "Past",
-		desc: "If held by a Medicham, this item allows it to Mega Evolve in battle.",
 	},
 	mentalherb: {
 		name: "Mental Herb",
@@ -3542,7 +3582,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		num: 219,
 		gen: 3,
-		desc: "Cures holder of Attract, Disable, Encore, Heal Block, Taunt, Torment. Single use.",
 	},
 	metagrossite: {
 		name: "Metagrossite",
@@ -3557,7 +3596,12 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 758,
 		gen: 6,
 		isNonstandard: "Past",
-		desc: "If held by a Metagross, this item allows it to Mega Evolve in battle.",
+	},
+	metalalloy: {
+		name: "Metal Alloy",
+		spritenum: 761,
+		num: 2482,
+		gen: 9,
 	},
 	metalcoat: {
 		name: "Metal Coat",
@@ -3568,13 +3612,11 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		onBasePowerPriority: 15,
 		onBasePower(basePower, user, target, move) {
 			if (move.type === 'Steel') {
-				return this.chainModify([0x1333, 0x1000]);
+				return this.chainModify([4915, 4096]);
 			}
 		},
 		num: 233,
 		gen: 2,
-		desc: "Holder's Steel-type attacks have 1.2x power. Evolves Onix into Steelix and Scyther into Scizor when traded.",
-		shortDesc: "Holder's Steel-type attacks have 1.2x power.",
 	},
 	metalpowder: {
 		name: "Metal Powder",
@@ -3591,7 +3633,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		itemUser: ["Ditto"],
 		num: 257,
 		gen: 2,
-		desc: "If held by a Ditto that hasn't Transformed, its Defense is doubled.",
+		isNonstandard: "Past",
 	},
 	metronome: {
 		name: "Metronome",
@@ -3602,10 +3644,10 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		onStart(pokemon) {
 			pokemon.addVolatile('metronome');
 		},
-		effect: {
+		condition: {
 			onStart(pokemon) {
-				this.effectData.numConsecutive = 0;
-				this.effectData.lastMove = '';
+				this.effectState.lastMove = '';
+				this.effectState.numConsecutive = 0;
 			},
 			onTryMovePriority: -2,
 			onTryMove(pokemon, target, move) {
@@ -3613,22 +3655,29 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 					pokemon.removeVolatile('metronome');
 					return;
 				}
-				if (this.effectData.lastMove === move.id && pokemon.moveLastTurnResult) {
-					this.effectData.numConsecutive++;
+				if (move.callsMove) return;
+				if (this.effectState.lastMove === move.id && pokemon.moveLastTurnResult) {
+					this.effectState.numConsecutive++;
+				} else if (pokemon.volatiles['twoturnmove']) {
+					if (this.effectState.lastMove !== move.id) {
+						this.effectState.numConsecutive = 1;
+					} else {
+						this.effectState.numConsecutive++;
+					}
 				} else {
-					this.effectData.numConsecutive = 0;
+					this.effectState.numConsecutive = 0;
 				}
-				this.effectData.lastMove = move.id;
+				this.effectState.lastMove = move.id;
 			},
 			onModifyDamage(damage, source, target, move) {
-				const dmgMod = [0x1000, 0x1333, 0x1666, 0x1999, 0x1CCC, 0x2000];
-				const numConsecutive = this.effectData.numConsecutive > 5 ? 5 : this.effectData.numConsecutive;
-				return this.chainModify([dmgMod[numConsecutive], 0x1000]);
+				const dmgMod = [4096, 4915, 5734, 6553, 7372, 8192];
+				const numConsecutive = this.effectState.numConsecutive > 5 ? 5 : this.effectState.numConsecutive;
+				this.debug(`Current Metronome boost: ${dmgMod[numConsecutive]}/4096`);
+				return this.chainModify([dmgMod[numConsecutive], 4096]);
 			},
 		},
 		num: 277,
 		gen: 4,
-		desc: "Damage of moves used on consecutive turns is increased. Max 2x after 5 turns.",
 	},
 	mewniumz: {
 		name: "Mewnium Z",
@@ -3640,7 +3689,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 806,
 		gen: 7,
 		isNonstandard: "Past",
-		desc: "If held by a Mew with Psychic, it can use Genesis Supernova.",
 	},
 	mewtwonitex: {
 		name: "Mewtwonite X",
@@ -3655,7 +3703,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 662,
 		gen: 6,
 		isNonstandard: "Past",
-		desc: "If held by a Mewtwo, this item allows it to Mega Evolve in battle.",
 	},
 	mewtwonitey: {
 		name: "Mewtwonite Y",
@@ -3670,7 +3717,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 663,
 		gen: 6,
 		isNonstandard: "Past",
-		desc: "If held by a Mewtwo, this item allows it to Mega Evolve in battle.",
 	},
 	micleberry: {
 		name: "Micle Berry",
@@ -3681,27 +3727,28 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 			type: "Rock",
 		},
 		onResidual(pokemon) {
-			if (pokemon.hp <= pokemon.maxhp / 4 || (pokemon.hp <= pokemon.maxhp / 2 && pokemon.hasAbility('gluttony'))) {
+			if (pokemon.hp <= pokemon.maxhp / 4 || (pokemon.hp <= pokemon.maxhp / 2 &&
+				pokemon.hasAbility('gluttony') && pokemon.abilityState.gluttony)) {
 				pokemon.eatItem();
 			}
 		},
 		onEat(pokemon) {
 			pokemon.addVolatile('micleberry');
 		},
-		effect: {
+		condition: {
 			duration: 2,
-			onSourceModifyAccuracy(accuracy, target, source) {
-				this.add('-enditem', source, 'Micle Berry');
-				source.removeVolatile('micleberry');
-				if (typeof accuracy === 'number') {
-					return accuracy * 1.2;
+			onSourceAccuracy(accuracy, target, source, move) {
+				if (!move.ohko) {
+					this.add('-enditem', source, 'Micle Berry');
+					source.removeVolatile('micleberry');
+					if (typeof accuracy === 'number') {
+						return this.chainModify([4915, 4096]);
+					}
 				}
 			},
 		},
 		num: 209,
 		gen: 4,
-		isNonstandard: "Unobtainable",
-		desc: "Holder's next move has 1.2x accuracy when at 1/4 max HP or less. Single use.",
 	},
 	mimikiumz: {
 		name: "Mimikium Z",
@@ -3713,7 +3760,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 924,
 		isNonstandard: "Past",
 		gen: 7,
-		desc: "If held by a Mimikyu with Play Rough, it can use Let's Snuggle Forever.",
 	},
 	mindplate: {
 		name: "Mind Plate",
@@ -3722,7 +3768,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		onBasePowerPriority: 15,
 		onBasePower(basePower, user, target, move) {
 			if (move.type === 'Psychic') {
-				return this.chainModify([0x1333, 0x1000]);
+				return this.chainModify([4915, 4096]);
 			}
 		},
 		onTakeItem(item, pokemon, source) {
@@ -3734,8 +3780,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		forcedForme: "Arceus-Psychic",
 		num: 307,
 		gen: 4,
-		isNonstandard: "Unobtainable",
-		desc: "Holder's Psychic-type attacks have 1.2x power. Judgment is Psychic type.",
 	},
 	miracleseed: {
 		name: "Miracle Seed",
@@ -3746,12 +3790,53 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		onBasePowerPriority: 15,
 		onBasePower(basePower, user, target, move) {
 			if (move.type === 'Grass') {
-				return this.chainModify([0x1333, 0x1000]);
+				return this.chainModify([4915, 4096]);
 			}
 		},
 		num: 239,
 		gen: 2,
-		desc: "Holder's Grass-type attacks have 1.2x power.",
+	},
+	mirrorherb: {
+		name: "Mirror Herb",
+		spritenum: 748,
+		fling: {
+			basePower: 30,
+		},
+		onFoeAfterBoost(boost, target, source, effect) {
+			if (effect?.name === 'Opportunist' || effect?.name === 'Mirror Herb') return;
+			if (!this.effectState.boosts) this.effectState.boosts = {} as SparseBoostsTable;
+			const boostPlus = this.effectState.boosts;
+			let i: BoostID;
+			for (i in boost) {
+				if (boost[i]! > 0) {
+					boostPlus[i] = (boostPlus[i] || 0) + boost[i]!;
+					this.effectState.ready = true;
+				}
+			}
+		},
+		onAnySwitchInPriority: -3,
+		onAnySwitchIn() {
+			if (!this.effectState.ready || !this.effectState.boosts) return;
+			(this.effectState.target as Pokemon).useItem();
+		},
+		onAnyAfterMove() {
+			if (!this.effectState.ready || !this.effectState.boosts) return;
+			(this.effectState.target as Pokemon).useItem();
+		},
+		onResidualOrder: 29,
+		onResidual(pokemon) {
+			if (!this.effectState.ready || !this.effectState.boosts) return;
+			(this.effectState.target as Pokemon).useItem();
+		},
+		onUse(pokemon) {
+			this.boost(this.effectState.boosts, pokemon);
+		},
+		onEnd() {
+			delete this.effectState.boosts;
+			delete this.effectState.ready;
+		},
+		num: 1883,
+		gen: 9,
 	},
 	mistyseed: {
 		name: "Misty Seed",
@@ -3759,13 +3844,13 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		fling: {
 			basePower: 10,
 		},
+		onSwitchInPriority: -1,
 		onStart(pokemon) {
 			if (!pokemon.ignoringItem() && this.field.isTerrain('mistyterrain')) {
 				pokemon.useItem();
 			}
 		},
-		onAnyTerrainStart() {
-			const pokemon = this.effectData.target;
+		onTerrainChange(pokemon) {
 			if (this.field.isTerrain('mistyterrain')) {
 				pokemon.useItem();
 			}
@@ -3775,7 +3860,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		num: 883,
 		gen: 7,
-		desc: "If the terrain is Misty Terrain, raises holder's Sp. Def by 1 stage. Single use.",
 	},
 	moonball: {
 		name: "Moon Ball",
@@ -3783,7 +3867,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 498,
 		gen: 2,
 		isPokeball: true,
-		desc: "A Poke Ball for catching Pokemon that evolve using the Moon Stone.",
 	},
 	moonstone: {
 		name: "Moon Stone",
@@ -3793,8 +3876,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		num: 81,
 		gen: 1,
-		desc: "Evolves Nidorina into Nidoqueen, Nidorino into Nidoking, Clefairy into Clefable, Jigglypuff into Wigglytuff, Skitty into Delcatty, and Munna into Musharna when used.",
-		shortDesc: "Evolves certain species of Pokemon when used.",
 	},
 	muscleband: {
 		name: "Muscle Band",
@@ -3805,12 +3886,11 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		onBasePowerPriority: 16,
 		onBasePower(basePower, user, target, move) {
 			if (move.category === 'Physical') {
-				return this.chainModify([0x1199, 0x1000]);
+				return this.chainModify([4505, 4096]);
 			}
 		},
 		num: 266,
 		gen: 4,
-		desc: "Holder's physical attacks have 1.1x power.",
 	},
 	mysticwater: {
 		name: "Mystic Water",
@@ -3821,12 +3901,11 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		onBasePowerPriority: 15,
 		onBasePower(basePower, user, target, move) {
 			if (move.type === 'Water') {
-				return this.chainModify([0x1333, 0x1000]);
+				return this.chainModify([4915, 4096]);
 			}
 		},
 		num: 243,
 		gen: 2,
-		desc: "Holder's Water-type attacks have 1.2x power.",
 	},
 	nanabberry: {
 		name: "Nanab Berry",
@@ -3840,7 +3919,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 166,
 		gen: 3,
 		isNonstandard: "Past",
-		desc: "Cannot be eaten by the holder. No effect when eaten with Bug Bite or Pluck.",
 	},
 	nestball: {
 		name: "Nest Ball",
@@ -3848,7 +3926,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 8,
 		gen: 3,
 		isPokeball: true,
-		desc: "A Poke Ball that works especially well on weaker Pokemon in the wild.",
 	},
 	netball: {
 		name: "Net Ball",
@@ -3856,7 +3933,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 6,
 		gen: 3,
 		isPokeball: true,
-		desc: "A Poke Ball that works especially well on Water- and Bug-type Pokemon.",
 	},
 	nevermeltice: {
 		name: "Never-Melt Ice",
@@ -3867,12 +3943,11 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		onBasePowerPriority: 15,
 		onBasePower(basePower, user, target, move) {
 			if (move.type === 'Ice') {
-				return this.chainModify([0x1333, 0x1000]);
+				return this.chainModify([4915, 4096]);
 			}
 		},
 		num: 246,
 		gen: 2,
-		desc: "Holder's Ice-type attacks have 1.2x power.",
 	},
 	nomelberry: {
 		name: "Nomel Berry",
@@ -3886,22 +3961,19 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 178,
 		gen: 3,
 		isNonstandard: "Past",
-		desc: "Cannot be eaten by the holder. No effect when eaten with Bug Bite or Pluck.",
 	},
 	normalgem: {
 		name: "Normal Gem",
 		spritenum: 307,
 		isGem: true,
 		onSourceTryPrimaryHit(target, source, move) {
-			const pledges = ['firepledge', 'grasspledge', 'waterpledge'];
-			if (target === source || move.category === 'Status' || pledges.includes(move.id)) return;
+			if (target === source || move.category === 'Status' || move.flags['pledgecombo']) return;
 			if (move.type === 'Normal' && source.useItem()) {
 				source.addVolatile('gem');
 			}
 		},
 		num: 564,
 		gen: 5,
-		desc: "Holder's first successful Normal-type attack will have 1.3x power. Single use.",
 	},
 	normaliumz: {
 		name: "Normalium Z",
@@ -3912,7 +3984,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 776,
 		gen: 7,
 		isNonstandard: "Past",
-		desc: "If holder has a Normal move, this item allows it to use a Normal Z-Move.",
 	},
 	occaberry: {
 		name: "Occa Berry",
@@ -3924,7 +3995,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		onSourceModifyDamage(damage, source, target, move) {
 			if (move.type === 'Fire' && target.getMoveHitData(move).typeMod > 0) {
-				const hitSub = target.volatiles['substitute'] && !move.flags['authentic'] && !(move.infiltrates && this.gen >= 6);
+				const hitSub = target.volatiles['substitute'] && !move.flags['bypasssub'] && !(move.infiltrates && this.gen >= 6);
 				if (hitSub) return;
 
 				if (target.eatItem()) {
@@ -3937,7 +4008,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		onEat() { },
 		num: 184,
 		gen: 4,
-		desc: "Halves damage taken from a supereffective Fire-type attack. Single use.",
 	},
 	oddincense: {
 		name: "Odd Incense",
@@ -3948,12 +4018,12 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		onBasePowerPriority: 15,
 		onBasePower(basePower, user, target, move) {
 			if (move.type === 'Psychic') {
-				return this.chainModify([0x1333, 0x1000]);
+				return this.chainModify([4915, 4096]);
 			}
 		},
 		num: 314,
 		gen: 4,
-		desc: "Holder's Psychic-type attacks have 1.2x power.",
+		isNonstandard: "Past",
 	},
 	oldamber: {
 		name: "Old Amber",
@@ -3964,7 +4034,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 103,
 		gen: 3,
 		isNonstandard: "Past",
-		desc: "Can be revived into Aerodactyl.",
 	},
 	oranberry: {
 		name: "Oran Berry",
@@ -3980,14 +4049,13 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 			}
 		},
 		onTryEatItem(item, pokemon) {
-			if (!this.runEvent('TryHeal', pokemon)) return false;
+			if (!this.runEvent('TryHeal', pokemon, null, this.effect, 10)) return false;
 		},
 		onEat(pokemon) {
 			this.heal(10);
 		},
 		num: 155,
 		gen: 3,
-		desc: "Restores 10 HP when at 1/2 max HP or less. Single use.",
 	},
 	ovalstone: {
 		name: "Oval Stone",
@@ -3997,7 +4065,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		num: 110,
 		gen: 4,
-		desc: "Evolves Happiny into Chansey when held and leveled up during the day.",
 	},
 	pamtreberry: {
 		name: "Pamtre Berry",
@@ -4011,7 +4078,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 180,
 		gen: 3,
 		isNonstandard: "Past",
-		desc: "Cannot be eaten by the holder. No effect when eaten with Bug Bite or Pluck.",
 	},
 	parkball: {
 		name: "Park Ball",
@@ -4019,7 +4085,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 500,
 		gen: 4,
 		isPokeball: true,
-		desc: "A special Poke Ball for the Pal Park.",
+		isNonstandard: "Unobtainable",
 	},
 	passhoberry: {
 		name: "Passho Berry",
@@ -4031,7 +4097,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		onSourceModifyDamage(damage, source, target, move) {
 			if (move.type === 'Water' && target.getMoveHitData(move).typeMod > 0) {
-				const hitSub = target.volatiles['substitute'] && !move.flags['authentic'] && !(move.infiltrates && this.gen >= 6);
+				const hitSub = target.volatiles['substitute'] && !move.flags['bypasssub'] && !(move.infiltrates && this.gen >= 6);
 				if (hitSub) return;
 
 				if (target.eatItem()) {
@@ -4044,7 +4110,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		onEat() { },
 		num: 185,
 		gen: 4,
-		desc: "Halves damage taken from a supereffective Water-type attack. Single use.",
 	},
 	payapaberry: {
 		name: "Payapa Berry",
@@ -4056,7 +4121,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		onSourceModifyDamage(damage, source, target, move) {
 			if (move.type === 'Psychic' && target.getMoveHitData(move).typeMod > 0) {
-				const hitSub = target.volatiles['substitute'] && !move.flags['authentic'] && !(move.infiltrates && this.gen >= 6);
+				const hitSub = target.volatiles['substitute'] && !move.flags['bypasssub'] && !(move.infiltrates && this.gen >= 6);
 				if (hitSub) return;
 
 				if (target.eatItem()) {
@@ -4069,7 +4134,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		onEat() { },
 		num: 193,
 		gen: 4,
-		desc: "Halves damage taken from a supereffective Psychic-type attack. Single use.",
 	},
 	pechaberry: {
 		name: "Pecha Berry",
@@ -4091,7 +4155,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		num: 151,
 		gen: 3,
-		desc: "Holder is cured if it is poisoned. Single use.",
 	},
 	persimberry: {
 		name: "Persim Berry",
@@ -4111,7 +4174,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		num: 156,
 		gen: 3,
-		desc: "Holder is cured if it is confused. Single use.",
 	},
 	petayaberry: {
 		name: "Petaya Berry",
@@ -4122,16 +4184,16 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 			type: "Poison",
 		},
 		onUpdate(pokemon) {
-			if (pokemon.hp <= pokemon.maxhp / 4 || (pokemon.hp <= pokemon.maxhp / 2 && pokemon.hasAbility('gluttony'))) {
+			if (pokemon.hp <= pokemon.maxhp / 4 || (pokemon.hp <= pokemon.maxhp / 2 &&
+				pokemon.hasAbility('gluttony') && pokemon.abilityState.gluttony)) {
 				pokemon.eatItem();
 			}
 		},
 		onEat(pokemon) {
-			this.boost({spa: 1});
+			this.boost({ spa: 1 });
 		},
 		num: 204,
 		gen: 3,
-		desc: "Raises holder's Sp. Atk by 1 stage when at 1/4 max HP or less. Single use.",
 	},
 	pidgeotite: {
 		name: "Pidgeotite",
@@ -4146,7 +4208,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 762,
 		gen: 6,
 		isNonstandard: "Past",
-		desc: "If held by a Pidgeot, this item allows it to Mega Evolve in battle.",
 	},
 	pikaniumz: {
 		name: "Pikanium Z",
@@ -4158,7 +4219,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 794,
 		gen: 7,
 		isNonstandard: "Past",
-		desc: "If held by a Pikachu with Volt Tackle, it can use Catastropika.",
 	},
 	pikashuniumz: {
 		name: "Pikashunium Z",
@@ -4170,7 +4230,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 836,
 		isNonstandard: "Past",
 		gen: 7,
-		desc: "If held by cap Pikachu with Thunderbolt, it can use 10,000,000 Volt Thunderbolt.",
 	},
 	pinapberry: {
 		name: "Pinap Berry",
@@ -4183,7 +4242,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		onEat: false,
 		num: 168,
 		gen: 3,
-		desc: "Cannot be eaten by the holder. No effect when eaten with Bug Bite or Pluck.",
+		isNonstandard: "Past",
 	},
 	pinsirite: {
 		name: "Pinsirite",
@@ -4198,7 +4257,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 671,
 		gen: 6,
 		isNonstandard: "Past",
-		desc: "If held by a Pinsir, this item allows it to Mega Evolve in battle.",
 	},
 	pixieplate: {
 		name: "Pixie Plate",
@@ -4207,7 +4265,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		onBasePowerPriority: 15,
 		onBasePower(basePower, user, target, move) {
 			if (move && move.type === 'Fairy') {
-				return this.chainModify([0x1333, 0x1000]);
+				return this.chainModify([4915, 4096]);
 			}
 		},
 		onTakeItem(item, pokemon, source) {
@@ -4219,7 +4277,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		forcedForme: "Arceus-Fairy",
 		num: 644,
 		gen: 6,
-		desc: "Holder's Fairy-type attacks have 1.2x power. Judgment is Fairy type.",
 	},
 	plumefossil: {
 		name: "Plume Fossil",
@@ -4230,7 +4287,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 573,
 		gen: 5,
 		isNonstandard: "Past",
-		desc: "Can be revived into Archen.",
 	},
 	poisonbarb: {
 		name: "Poison Barb",
@@ -4242,12 +4298,11 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		onBasePowerPriority: 15,
 		onBasePower(basePower, user, target, move) {
 			if (move.type === 'Poison') {
-				return this.chainModify([0x1333, 0x1000]);
+				return this.chainModify([4915, 4096]);
 			}
 		},
 		num: 245,
 		gen: 2,
-		desc: "Holder's Poison-type attacks have 1.2x power.",
 	},
 	poisongem: {
 		name: "Poison Gem",
@@ -4262,7 +4317,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 554,
 		gen: 5,
 		isNonstandard: "Past",
-		desc: "Holder's first successful Poison-type attack will have 1.3x power. Single use.",
 	},
 	poisonmemory: {
 		name: "Poison Memory",
@@ -4278,7 +4332,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		itemUser: ["Silvally-Poison"],
 		num: 906,
 		gen: 7,
-		desc: "Holder's Multi-Attack is Poison type.",
+		isNonstandard: "Past",
 	},
 	poisoniumz: {
 		name: "Poisonium Z",
@@ -4291,7 +4345,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 783,
 		gen: 7,
 		isNonstandard: "Past",
-		desc: "If holder has a Poison move, this item allows it to use a Poison Z-Move.",
 	},
 	pokeball: {
 		name: "Poke Ball",
@@ -4299,7 +4352,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 4,
 		gen: 1,
 		isPokeball: true,
-		desc: "A device for catching wild Pokemon. It is designed as a capsule system.",
 	},
 	pomegberry: {
 		name: "Pomeg Berry",
@@ -4312,7 +4364,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		onEat: false,
 		num: 169,
 		gen: 3,
-		desc: "Cannot be eaten by the holder. No effect when eaten with Bug Bite or Pluck.",
 	},
 	poweranklet: {
 		name: "Power Anklet",
@@ -4326,7 +4377,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		num: 293,
 		gen: 4,
-		desc: "Holder's Speed is halved. The Klutz Ability does not ignore this effect.",
 	},
 	powerband: {
 		name: "Power Band",
@@ -4340,7 +4390,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		num: 292,
 		gen: 4,
-		desc: "Holder's Speed is halved. The Klutz Ability does not ignore this effect.",
 	},
 	powerbelt: {
 		name: "Power Belt",
@@ -4354,7 +4403,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		num: 290,
 		gen: 4,
-		desc: "Holder's Speed is halved. The Klutz Ability does not ignore this effect.",
 	},
 	powerbracer: {
 		name: "Power Bracer",
@@ -4368,7 +4416,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		num: 289,
 		gen: 4,
-		desc: "Holder's Speed is halved. The Klutz Ability does not ignore this effect.",
 	},
 	powerherb: {
 		onChargeMove(pokemon, target, move) {
@@ -4386,7 +4433,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		num: 271,
 		gen: 4,
-		desc: "Holder's two-turn moves complete in one turn (except Sky Drop). Single use.",
 	},
 	powerlens: {
 		name: "Power Lens",
@@ -4400,7 +4446,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		num: 291,
 		gen: 4,
-		desc: "Holder's Speed is halved. The Klutz Ability does not ignore this effect.",
 	},
 	powerweight: {
 		name: "Power Weight",
@@ -4414,7 +4459,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		num: 294,
 		gen: 4,
-		desc: "Holder's Speed is halved. The Klutz Ability does not ignore this effect.",
 	},
 	premierball: {
 		name: "Premier Ball",
@@ -4422,7 +4466,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 12,
 		gen: 3,
 		isPokeball: true,
-		desc: "A rare Poke Ball that has been crafted to commemorate an event.",
 	},
 	primariumz: {
 		name: "Primarium Z",
@@ -4434,7 +4477,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 800,
 		gen: 7,
 		isNonstandard: "Past",
-		desc: "If held by a Primarina with Sparkling Aria, it can use Oceanic Operetta.",
 	},
 	prismscale: {
 		name: "Prism Scale",
@@ -4444,7 +4486,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		num: 537,
 		gen: 5,
-		desc: "Evolves Feebas into Milotic when traded.",
 	},
 	protectivepads: {
 		name: "Protective Pads",
@@ -4452,51 +4493,9 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		fling: {
 			basePower: 30,
 		},
-		onAttractPriority: -1,
-		onAttract(target, source) {
-			if (
-				target !== source && target === this.activePokemon &&
-				this.activeMove && this.activeMove.flags['contact']
-			) return false;
-		},
-		onBoostPriority: -1,
-		onBoost(boost, target, source, effect) {
-			if (target !== source && target === this.activePokemon && this.activeMove && this.activeMove.flags['contact']) {
-				if (effect && effect.effectType === 'Ability') {
-					// Ability activation always happens for boosts
-					this.add('-activate', target, 'item: Protective Pads');
-				}
-				return false;
-			}
-		},
-		onDamagePriority: -1,
-		onDamage(damage, target, source, effect) {
-			if (target !== source && target === this.activePokemon && this.activeMove && this.activeMove.flags['contact']) {
-				if (effect && effect.effectType === 'Ability') {
-					this.add('-activate', source, effect.fullname);
-					this.add('-activate', target, 'item: Protective Pads');
-				}
-				return false;
-			}
-		},
-		onSetAbility(ability, target, source, effect) {
-			if (target !== source && target === this.activePokemon && this.activeMove && this.activeMove.flags['contact']) {
-				if (effect && effect.effectType === 'Ability') {
-					this.add('-activate', source, effect.fullname);
-					this.add('-activate', target, 'item: Protective Pads');
-				}
-				return false;
-			}
-		},
-		onSetStatus(status, target, source, effect) {
-			if (
-				target !== source && target === this.activePokemon &&
-				this.activeMove && this.activeMove.flags['contact']
-			) return false;
-		},
+		// protective effect handled in Battle#checkMoveMakesContact
 		num: 880,
 		gen: 7,
-		desc: "Holder's moves are protected from adverse contact effects, except Pickpocket.",
 	},
 	protector: {
 		name: "Protector",
@@ -4506,7 +4505,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		num: 321,
 		gen: 4,
-		desc: "Evolves Rhydon into Rhyperior when traded.",
 	},
 	psychicgem: {
 		name: "Psychic Gem",
@@ -4521,7 +4519,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 557,
 		gen: 5,
 		isNonstandard: "Past",
-		desc: "Holder's first successful Psychic-type attack will have 1.3x power. Single use.",
 	},
 	psychicmemory: {
 		name: "Psychic Memory",
@@ -4537,7 +4534,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		itemUser: ["Silvally-Psychic"],
 		num: 916,
 		gen: 7,
-		desc: "Holder's Multi-Attack is Psychic type.",
+		isNonstandard: "Past",
 	},
 	psychicseed: {
 		name: "Psychic Seed",
@@ -4545,13 +4542,13 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		fling: {
 			basePower: 10,
 		},
+		onSwitchInPriority: -1,
 		onStart(pokemon) {
 			if (!pokemon.ignoringItem() && this.field.isTerrain('psychicterrain')) {
 				pokemon.useItem();
 			}
 		},
-		onAnyTerrainStart() {
-			const pokemon = this.effectData.target;
+		onTerrainChange(pokemon) {
 			if (this.field.isTerrain('psychicterrain')) {
 				pokemon.useItem();
 			}
@@ -4561,7 +4558,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		num: 882,
 		gen: 7,
-		desc: "If the terrain is Psychic Terrain, raises holder's Sp. Def by 1 stage. Single use.",
 	},
 	psychiumz: {
 		name: "Psychium Z",
@@ -4574,7 +4570,26 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 786,
 		gen: 7,
 		isNonstandard: "Past",
-		desc: "If holder has a Psychic move, this item allows it to use a Psychic Z-Move.",
+	},
+	punchingglove: {
+		name: "Punching Glove",
+		spritenum: 749,
+		fling: {
+			basePower: 30,
+		},
+		onBasePowerPriority: 23,
+		onBasePower(basePower, attacker, defender, move) {
+			if (move.flags['punch']) {
+				this.debug('Punching Glove boost');
+				return this.chainModify([4506, 4096]);
+			}
+		},
+		onModifyMovePriority: 1,
+		onModifyMove(move) {
+			if (move.flags['punch']) delete move.flags['contact'];
+		},
+		num: 1884,
+		gen: 9,
 	},
 	qualotberry: {
 		name: "Qualot Berry",
@@ -4587,7 +4602,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		onEat: false,
 		num: 171,
 		gen: 3,
-		desc: "Cannot be eaten by the holder. No effect when eaten with Bug Bite or Pluck.",
 	},
 	quickball: {
 		name: "Quick Ball",
@@ -4595,14 +4609,14 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 15,
 		gen: 4,
 		isPokeball: true,
-		desc: "A Poke Ball that provides a better catch rate at the start of a wild encounter.",
 	},
 	quickclaw: {
-		onFractionalPriorityPriority: -1,
-		onFractionalPriority(priority, pokemon) {
-			if (this.randomChance(1, 5)) {
+		onFractionalPriorityPriority: -2,
+		onFractionalPriority(priority, pokemon, target, move) {
+			if (move.category === "Status" && pokemon.hasAbility("myceliummight")) return;
+			if (priority <= 0 && this.randomChance(1, 5)) {
 				this.add('-activate', pokemon, 'item: Quick Claw');
-				return Math.round(priority) + 0.1;
+				return 0.1;
 			}
 		},
 		name: "Quick Claw",
@@ -4612,7 +4626,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		num: 217,
 		gen: 2,
-		desc: "Each turn, holder has a 20% chance to move first in its priority bracket.",
 	},
 	quickpowder: {
 		name: "Quick Powder",
@@ -4628,7 +4641,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		itemUser: ["Ditto"],
 		num: 274,
 		gen: 4,
-		desc: "If held by a Ditto that hasn't Transformed, its Speed is doubled.",
+		isNonstandard: "Past",
 	},
 	rabutaberry: {
 		name: "Rabuta Berry",
@@ -4642,7 +4655,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 177,
 		gen: 3,
 		isNonstandard: "Past",
-		desc: "Cannot be eaten by the holder. No effect when eaten with Bug Bite or Pluck.",
 	},
 	rarebone: {
 		name: "Rare Bone",
@@ -4652,7 +4664,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		num: 106,
 		gen: 4,
-		desc: "No competitive use other than when used with Fling.",
 	},
 	rawstberry: {
 		name: "Rawst Berry",
@@ -4674,7 +4685,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		num: 152,
 		gen: 3,
-		desc: "Holder is cured if it is burned. Single use.",
 	},
 	razorclaw: {
 		name: "Razor Claw",
@@ -4687,8 +4697,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		num: 326,
 		gen: 4,
-		desc: "Holder's critical hit ratio is raised by 1 stage. Evolves Sneasel into Weavile when held and leveled up during the night.",
-		shortDesc: "Holder's critical hit ratio is raised by 1 stage.",
 	},
 	razorfang: {
 		name: "Razor Fang",
@@ -4712,9 +4720,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		num: 327,
 		gen: 4,
-		isNonstandard: "Past",
-		desc: "Holder's attacks without a chance to flinch gain a 10% chance to flinch. Evolves Gligar into Gliscor when held and leveled up during the night.",
-		shortDesc: "Holder's attacks without a chance to flinch gain a 10% chance to flinch.",
 	},
 	razzberry: {
 		name: "Razz Berry",
@@ -4728,7 +4733,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 164,
 		gen: 3,
 		isNonstandard: "Past",
-		desc: "Cannot be eaten by the holder. No effect when eaten with Bug Bite or Pluck.",
 	},
 	reapercloth: {
 		name: "Reaper Cloth",
@@ -4738,7 +4742,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		num: 325,
 		gen: 4,
-		desc: "Evolves Dusclops into Dusknoir when traded.",
 	},
 	redcard: {
 		name: "Red Card",
@@ -4761,28 +4764,25 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		num: 542,
 		gen: 5,
-		desc: "If holder survives a hit, attacker is forced to switch to a random ally. Single use.",
 	},
 	redorb: {
 		name: "Red Orb",
 		spritenum: 390,
+		onSwitchInPriority: -1,
 		onSwitchIn(pokemon) {
-			if (pokemon.isActive && pokemon.baseSpecies.name === 'Groudon') {
-				this.queue.insertChoice({choice: 'runPrimal', pokemon: pokemon});
+			if (pokemon.isActive && pokemon.baseSpecies.name === 'Groudon' && !pokemon.transformed) {
+				pokemon.formeChange('Groudon-Primal', this.effect, true);
 			}
-		},
-		onPrimal(pokemon) {
-			pokemon.formeChange('Groudon-Primal', this.effect, true);
 		},
 		onTakeItem(item, source) {
 			if (source.baseSpecies.baseSpecies === 'Groudon') return false;
 			return true;
 		},
 		itemUser: ["Groudon"],
+		isPrimalOrb: true,
 		num: 534,
 		gen: 6,
 		isNonstandard: "Past",
-		desc: "If held by a Groudon, this item triggers its Primal Reversion in battle.",
 	},
 	repeatball: {
 		name: "Repeat Ball",
@@ -4790,7 +4790,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 9,
 		gen: 3,
 		isPokeball: true,
-		desc: "A Poke Ball that works well on Pokemon species that were previously caught.",
 	},
 	ribbonsweet: {
 		name: "Ribbon Sweet",
@@ -4800,7 +4799,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		num: 1115,
 		gen: 8,
-		desc: "Evolves Milcery into Alcremie when held and spun around.",
 	},
 	rindoberry: {
 		name: "Rindo Berry",
@@ -4812,7 +4810,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		onSourceModifyDamage(damage, source, target, move) {
 			if (move.type === 'Grass' && target.getMoveHitData(move).typeMod > 0) {
-				const hitSub = target.volatiles['substitute'] && !move.flags['authentic'] && !(move.infiltrates && this.gen >= 6);
+				const hitSub = target.volatiles['substitute'] && !move.flags['bypasssub'] && !(move.infiltrates && this.gen >= 6);
 				if (hitSub) return;
 
 				if (target.eatItem()) {
@@ -4825,7 +4823,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		onEat() { },
 		num: 187,
 		gen: 4,
-		desc: "Halves damage taken from a supereffective Grass-type attack. Single use.",
 	},
 	ringtarget: {
 		name: "Ring Target",
@@ -4836,7 +4833,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		onNegateImmunity: false,
 		num: 543,
 		gen: 5,
-		desc: "The holder's type immunities granted solely by its typing are negated.",
 	},
 	rockgem: {
 		name: "Rock Gem",
@@ -4851,7 +4847,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 559,
 		gen: 5,
 		isNonstandard: "Past",
-		desc: "Holder's first successful Rock-type attack will have 1.3x power. Single use.",
 	},
 	rockincense: {
 		name: "Rock Incense",
@@ -4862,12 +4857,12 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		onBasePowerPriority: 15,
 		onBasePower(basePower, user, target, move) {
 			if (move.type === 'Rock') {
-				return this.chainModify([0x1333, 0x1000]);
+				return this.chainModify([4915, 4096]);
 			}
 		},
 		num: 315,
 		gen: 4,
-		desc: "Holder's Rock-type attacks have 1.2x power.",
+		isNonstandard: "Past",
 	},
 	rockmemory: {
 		name: "Rock Memory",
@@ -4883,7 +4878,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		itemUser: ["Silvally-Rock"],
 		num: 908,
 		gen: 7,
-		desc: "Holder's Multi-Attack is Rock type.",
+		isNonstandard: "Past",
 	},
 	rockiumz: {
 		name: "Rockium Z",
@@ -4896,7 +4891,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 788,
 		gen: 7,
 		isNonstandard: "Past",
-		desc: "If holder has a Rock move, this item allows it to use a Rock Z-Move.",
 	},
 	rockyhelmet: {
 		name: "Rocky Helmet",
@@ -4906,13 +4900,12 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		onDamagingHitOrder: 2,
 		onDamagingHit(damage, target, source, move) {
-			if (move.flags['contact']) {
+			if (this.checkMoveMakesContact(move, source, target)) {
 				this.damage(source.baseMaxhp / 6, source, target);
 			}
 		},
 		num: 540,
 		gen: 5,
-		desc: "If holder is hit by a contact move, the attacker loses 1/6 of its max HP.",
 	},
 	roomservice: {
 		name: "Room Service",
@@ -4920,9 +4913,16 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		fling: {
 			basePower: 100,
 		},
-		onUpdate(pokemon) {
-			if (this.field.getPseudoWeather('trickroom')) {
+		onSwitchInPriority: -1,
+		onStart(pokemon) {
+			if (!pokemon.ignoringItem() && this.field.getPseudoWeather('trickroom')) {
 				pokemon.useItem();
+			}
+		},
+		onAnyPseudoWeatherChange() {
+			const pokemon = this.effectState.target;
+			if (this.field.getPseudoWeather('trickroom')) {
+				pokemon.useItem(pokemon);
 			}
 		},
 		boosts: {
@@ -4930,7 +4930,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		num: 1122,
 		gen: 8,
-		desc: "If Trick Room is active, the holder's Speed is lowered by 1 stage. Single use.",
 	},
 	rootfossil: {
 		name: "Root Fossil",
@@ -4941,7 +4940,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 99,
 		gen: 3,
 		isNonstandard: "Past",
-		desc: "Can be revived into Lileep.",
 	},
 	roseincense: {
 		name: "Rose Incense",
@@ -4952,12 +4950,12 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		onBasePowerPriority: 15,
 		onBasePower(basePower, user, target, move) {
 			if (move.type === 'Grass') {
-				return this.chainModify([0x1333, 0x1000]);
+				return this.chainModify([4915, 4096]);
 			}
 		},
 		num: 318,
 		gen: 4,
-		desc: "Holder's Grass-type attacks have 1.2x power.",
+		isNonstandard: "Past",
 	},
 	roseliberry: {
 		name: "Roseli Berry",
@@ -4969,7 +4967,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		onSourceModifyDamage(damage, source, target, move) {
 			if (move.type === 'Fairy' && target.getMoveHitData(move).typeMod > 0) {
-				const hitSub = target.volatiles['substitute'] && !move.flags['authentic'] && !(move.infiltrates && this.gen >= 6);
+				const hitSub = target.volatiles['substitute'] && !move.flags['bypasssub'] && !(move.infiltrates && this.gen >= 6);
 				if (hitSub) return;
 
 				if (target.eatItem()) {
@@ -4982,7 +4980,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		onEat() { },
 		num: 686,
 		gen: 6,
-		desc: "Halves damage taken from a supereffective Fairy-type attack. Single use.",
 	},
 	rowapberry: {
 		name: "Rowap Berry",
@@ -4993,17 +4990,15 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 			type: "Dark",
 		},
 		onDamagingHit(damage, target, source, move) {
-			if (move.category === 'Special') {
+			if (move.category === 'Special' && source.hp && source.isActive && !source.hasAbility('magicguard')) {
 				if (target.eatItem()) {
-					this.damage(source.baseMaxhp / 8, source, target);
+					this.damage(source.baseMaxhp / (target.hasAbility('ripen') ? 4 : 8), source, target);
 				}
 			}
 		},
 		onEat() { },
 		num: 212,
 		gen: 4,
-		isNonstandard: "Unobtainable",
-		desc: "If holder is hit by a special move, attacker loses 1/8 of its max HP. Single use.",
 	},
 	rustedshield: {
 		name: "Rusted Shield",
@@ -5014,11 +5009,9 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 			}
 			return true;
 		},
-		forcedForme: "Zamazenta-Crowned",
 		itemUser: ["Zamazenta-Crowned"],
 		num: 1104,
 		gen: 8,
-		desc: "If held by a Zamazenta, this item changes its forme to Crowned Shield.",
 	},
 	rustedsword: {
 		name: "Rusted Sword",
@@ -5029,11 +5022,9 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 			}
 			return true;
 		},
-		forcedForme: "Zacian-Crowned",
 		itemUser: ["Zacian-Crowned"],
 		num: 1103,
 		gen: 8,
-		desc: "If held by a Zacian, this item changes its forme to Crowned Sword.",
 	},
 	sablenite: {
 		name: "Sablenite",
@@ -5048,7 +5039,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 754,
 		gen: 6,
 		isNonstandard: "Past",
-		desc: "If held by a Sableye, this item allows it to Mega Evolve in battle.",
 	},
 	sachet: {
 		name: "Sachet",
@@ -5058,7 +5048,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		num: 647,
 		gen: 6,
-		desc: "Evolves Spritzee into Aromatisse when traded.",
+		isNonstandard: "Past",
 	},
 	safariball: {
 		name: "Safari Ball",
@@ -5066,7 +5056,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 5,
 		gen: 1,
 		isPokeball: true,
-		desc: "A special Poke Ball that is used only in the Safari Zone and Great Marsh.",
 	},
 	safetygoggles: {
 		name: "Safety Goggles",
@@ -5085,7 +5074,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		num: 650,
 		gen: 6,
-		desc: "Holder is immune to powder moves and damage from Sandstorm or Hail.",
 	},
 	sailfossil: {
 		name: "Sail Fossil",
@@ -5096,7 +5084,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 711,
 		gen: 6,
 		isNonstandard: "Past",
-		desc: "Can be revived into Amaura.",
 	},
 	salacberry: {
 		name: "Salac Berry",
@@ -5107,16 +5094,16 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 			type: "Fighting",
 		},
 		onUpdate(pokemon) {
-			if (pokemon.hp <= pokemon.maxhp / 4 || (pokemon.hp <= pokemon.maxhp / 2 && pokemon.hasAbility('gluttony'))) {
+			if (pokemon.hp <= pokemon.maxhp / 4 || (pokemon.hp <= pokemon.maxhp / 2 &&
+				pokemon.hasAbility('gluttony') && pokemon.abilityState.gluttony)) {
 				pokemon.eatItem();
 			}
 		},
 		onEat(pokemon) {
-			this.boost({spe: 1});
+			this.boost({ spe: 1 });
 		},
 		num: 203,
 		gen: 3,
-		desc: "Raises holder's Speed by 1 stage when at 1/4 max HP or less. Single use.",
 	},
 	salamencite: {
 		name: "Salamencite",
@@ -5131,7 +5118,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 769,
 		gen: 6,
 		isNonstandard: "Past",
-		desc: "If held by a Salamence, this item allows it to Mega Evolve in battle.",
 	},
 	sceptilite: {
 		name: "Sceptilite",
@@ -5146,7 +5132,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 753,
 		gen: 6,
 		isNonstandard: "Past",
-		desc: "If held by a Sceptile, this item allows it to Mega Evolve in battle.",
 	},
 	scizorite: {
 		name: "Scizorite",
@@ -5161,7 +5146,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 670,
 		gen: 6,
 		isNonstandard: "Past",
-		desc: "If held by a Scizor, this item allows it to Mega Evolve in battle.",
 	},
 	scopelens: {
 		name: "Scope Lens",
@@ -5174,7 +5158,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		num: 232,
 		gen: 2,
-		desc: "Holder's critical hit ratio is raised by 1 stage.",
 	},
 	seaincense: {
 		name: "Sea Incense",
@@ -5185,12 +5168,12 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		onBasePowerPriority: 15,
 		onBasePower(basePower, user, target, move) {
 			if (move && move.type === 'Water') {
-				return this.chainModify([0x1333, 0x1000]);
+				return this.chainModify([4915, 4096]);
 			}
 		},
 		num: 254,
 		gen: 3,
-		desc: "Holder's Water-type attacks have 1.2x power.",
+		isNonstandard: "Past",
 	},
 	sharpbeak: {
 		name: "Sharp Beak",
@@ -5201,12 +5184,11 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		onBasePowerPriority: 15,
 		onBasePower(basePower, user, target, move) {
 			if (move && move.type === 'Flying') {
-				return this.chainModify([0x1333, 0x1000]);
+				return this.chainModify([4915, 4096]);
 			}
 		},
 		num: 244,
 		gen: 2,
-		desc: "Holder's Flying-type attacks have 1.2x power.",
 	},
 	sharpedonite: {
 		name: "Sharpedonite",
@@ -5221,7 +5203,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 759,
 		gen: 6,
 		isNonstandard: "Past",
-		desc: "If held by a Sharpedo, this item allows it to Mega Evolve in battle.",
 	},
 	shedshell: {
 		name: "Shed Shell",
@@ -5235,7 +5216,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		num: 295,
 		gen: 4,
-		desc: "Holder may switch out even when trapped by another Pokemon, or by Ingrain.",
 	},
 	shellbell: {
 		name: "Shell Bell",
@@ -5245,13 +5225,12 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		onAfterMoveSecondarySelfPriority: -1,
 		onAfterMoveSecondarySelf(pokemon, target, move) {
-			if (move.category !== 'Status') {
-				this.heal(pokemon.lastDamage / 8, pokemon);
+			if (move.totalDamage && !pokemon.forceSwitchFlag) {
+				this.heal(move.totalDamage / 8, pokemon);
 			}
 		},
 		num: 253,
 		gen: 3,
-		desc: "After an attack, holder gains 1/8 of the damage in HP dealt to other Pokemon.",
 	},
 	shinystone: {
 		name: "Shiny Stone",
@@ -5261,8 +5240,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		num: 107,
 		gen: 4,
-		desc: "Evolves Togetic into Togekiss, Roselia into Roserade, Minccino into Cinccino, and Floette into Florges when used.",
-		shortDesc: "Evolves certain species of Pokemon when used.",
 	},
 	shockdrive: {
 		name: "Shock Drive",
@@ -5279,7 +5256,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 117,
 		gen: 5,
 		isNonstandard: "Past",
-		desc: "Holder's Techno Blast is Electric type.",
 	},
 	shucaberry: {
 		name: "Shuca Berry",
@@ -5291,7 +5267,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		onSourceModifyDamage(damage, source, target, move) {
 			if (move.type === 'Ground' && target.getMoveHitData(move).typeMod > 0) {
-				const hitSub = target.volatiles['substitute'] && !move.flags['authentic'] && !(move.infiltrates && this.gen >= 6);
+				const hitSub = target.volatiles['substitute'] && !move.flags['bypasssub'] && !(move.infiltrates && this.gen >= 6);
 				if (hitSub) return;
 
 				if (target.eatItem()) {
@@ -5304,7 +5280,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		onEat() { },
 		num: 191,
 		gen: 4,
-		desc: "Halves damage taken from a supereffective Ground-type attack. Single use.",
 	},
 	silkscarf: {
 		name: "Silk Scarf",
@@ -5315,15 +5290,14 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		onBasePowerPriority: 15,
 		onBasePower(basePower, user, target, move) {
 			if (move.type === 'Normal') {
-				return this.chainModify([0x1333, 0x1000]);
+				return this.chainModify([4915, 4096]);
 			}
 		},
 		num: 251,
 		gen: 3,
-		desc: "Holder's Normal-type attacks have 1.2x power.",
 	},
 	silverpowder: {
-		name: "SilverPowder",
+		name: "Silver Powder",
 		spritenum: 447,
 		fling: {
 			basePower: 10,
@@ -5331,12 +5305,11 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		onBasePowerPriority: 15,
 		onBasePower(basePower, user, target, move) {
 			if (move.type === 'Bug') {
-				return this.chainModify([0x1333, 0x1000]);
+				return this.chainModify([4915, 4096]);
 			}
 		},
 		num: 222,
 		gen: 2,
-		desc: "Holder's Bug-type attacks have 1.2x power.",
 	},
 	sitrusberry: {
 		name: "Sitrus Berry",
@@ -5352,14 +5325,13 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 			}
 		},
 		onTryEatItem(item, pokemon) {
-			if (!this.runEvent('TryHeal', pokemon)) return false;
+			if (!this.runEvent('TryHeal', pokemon, null, this.effect, pokemon.baseMaxhp / 4)) return false;
 		},
 		onEat(pokemon) {
 			this.heal(pokemon.baseMaxhp / 4);
 		},
 		num: 158,
 		gen: 3,
-		desc: "Restores 1/4 max HP when at 1/2 max HP or less. Single use.",
 	},
 	skullfossil: {
 		name: "Skull Fossil",
@@ -5370,7 +5342,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 105,
 		gen: 4,
 		isNonstandard: "Past",
-		desc: "Can be revived into Cranidos.",
 	},
 	skyplate: {
 		name: "Sky Plate",
@@ -5379,7 +5350,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		onBasePowerPriority: 15,
 		onBasePower(basePower, user, target, move) {
 			if (move.type === 'Flying') {
-				return this.chainModify([0x1333, 0x1000]);
+				return this.chainModify([4915, 4096]);
 			}
 		},
 		onTakeItem(item, pokemon, source) {
@@ -5391,8 +5362,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		forcedForme: "Arceus-Flying",
 		num: 306,
 		gen: 4,
-		isNonstandard: "Unobtainable",
-		desc: "Holder's Flying-type attacks have 1.2x power. Judgment is Flying type.",
 	},
 	slowbronite: {
 		name: "Slowbronite",
@@ -5407,7 +5376,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 760,
 		gen: 6,
 		isNonstandard: "Past",
-		desc: "If held by a Slowbro, this item allows it to Mega Evolve in battle.",
 	},
 	smoothrock: {
 		name: "Smooth Rock",
@@ -5417,7 +5385,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		num: 283,
 		gen: 4,
-		desc: "Holder's use of Sandstorm lasts 8 turns instead of 5.",
 	},
 	snorliumz: {
 		name: "Snorlium Z",
@@ -5429,7 +5396,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 804,
 		gen: 7,
 		isNonstandard: "Past",
-		desc: "If held by a Snorlax with Giga Impact, it can use Pulverizing Pancake.",
 	},
 	snowball: {
 		name: "Snowball",
@@ -5447,7 +5413,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		num: 649,
 		gen: 6,
-		desc: "Raises holder's Attack by 1 if hit by an Ice-type attack. Single use.",
 	},
 	softsand: {
 		name: "Soft Sand",
@@ -5458,12 +5423,11 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		onBasePowerPriority: 15,
 		onBasePower(basePower, user, target, move) {
 			if (move.type === 'Ground') {
-				return this.chainModify([0x1333, 0x1000]);
+				return this.chainModify([4915, 4096]);
 			}
 		},
 		num: 237,
 		gen: 2,
-		desc: "Holder's Ground-type attacks have 1.2x power.",
 	},
 	solganiumz: {
 		name: "Solganium Z",
@@ -5475,7 +5439,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 921,
 		gen: 7,
 		isNonstandard: "Past",
-		desc: "Solgaleo or Dusk Mane Necrozma with Sunsteel Strike can use a special Z-Move.",
 	},
 	souldew: {
 		name: "Soul Dew",
@@ -5489,14 +5452,12 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 				move && (user.baseSpecies.num === 380 || user.baseSpecies.num === 381) &&
 				(move.type === 'Psychic' || move.type === 'Dragon')
 			) {
-				return this.chainModify([0x1333, 0x1000]);
+				return this.chainModify([4915, 4096]);
 			}
 		},
 		itemUser: ["Latios", "Latias"],
 		num: 225,
 		gen: 3,
-		isNonstandard: "Past",
-		desc: "If held by a Latias/Latios, its Dragon- and Psychic-type moves have 1.2x power.",
 	},
 	spelltag: {
 		name: "Spell Tag",
@@ -5507,12 +5468,11 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		onBasePowerPriority: 15,
 		onBasePower(basePower, user, target, move) {
 			if (move.type === 'Ghost') {
-				return this.chainModify([0x1333, 0x1000]);
+				return this.chainModify([4915, 4096]);
 			}
 		},
 		num: 247,
 		gen: 2,
-		desc: "Holder's Ghost-type attacks have 1.2x power.",
 	},
 	spelonberry: {
 		name: "Spelon Berry",
@@ -5526,7 +5486,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 179,
 		gen: 3,
 		isNonstandard: "Past",
-		desc: "Cannot be eaten by the holder. No effect when eaten with Bug Bite or Pluck.",
 	},
 	splashplate: {
 		name: "Splash Plate",
@@ -5535,7 +5494,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		onBasePowerPriority: 15,
 		onBasePower(basePower, user, target, move) {
 			if (move.type === 'Water') {
-				return this.chainModify([0x1333, 0x1000]);
+				return this.chainModify([4915, 4096]);
 			}
 		},
 		onTakeItem(item, pokemon, source) {
@@ -5547,8 +5506,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		forcedForme: "Arceus-Water",
 		num: 299,
 		gen: 4,
-		isNonstandard: "Unobtainable",
-		desc: "Holder's Water-type attacks have 1.2x power. Judgment is Water type.",
 	},
 	spookyplate: {
 		name: "Spooky Plate",
@@ -5557,7 +5514,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		onBasePowerPriority: 15,
 		onBasePower(basePower, user, target, move) {
 			if (move.type === 'Ghost') {
-				return this.chainModify([0x1333, 0x1000]);
+				return this.chainModify([4915, 4096]);
 			}
 		},
 		onTakeItem(item, pokemon, source) {
@@ -5569,8 +5526,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		forcedForme: "Arceus-Ghost",
 		num: 310,
 		gen: 4,
-		isNonstandard: "Unobtainable",
-		desc: "Holder's Ghost-type attacks have 1.2x power. Judgment is Ghost type.",
 	},
 	sportball: {
 		name: "Sport Ball",
@@ -5578,7 +5533,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 499,
 		gen: 2,
 		isPokeball: true,
-		desc: "A special Poke Ball for the Bug-Catching Contest.",
 	},
 	starfberry: {
 		name: "Starf Berry",
@@ -5589,13 +5543,14 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 			type: "Psychic",
 		},
 		onUpdate(pokemon) {
-			if (pokemon.hp <= pokemon.maxhp / 4 || (pokemon.hp <= pokemon.maxhp / 2 && pokemon.hasAbility('gluttony'))) {
+			if (pokemon.hp <= pokemon.maxhp / 4 || (pokemon.hp <= pokemon.maxhp / 2 &&
+				pokemon.hasAbility('gluttony') && pokemon.abilityState.gluttony)) {
 				pokemon.eatItem();
 			}
 		},
 		onEat(pokemon) {
-			const stats: BoostName[] = [];
-			let stat: BoostName;
+			const stats: BoostID[] = [];
+			let stat: BoostID;
 			for (stat in pokemon.boosts) {
 				if (stat !== 'accuracy' && stat !== 'evasion' && pokemon.boosts[stat] < 6) {
 					stats.push(stat);
@@ -5610,7 +5565,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		num: 207,
 		gen: 3,
-		desc: "Raises a random stat by 2 when at 1/4 max HP or less (not acc/eva). Single use.",
 	},
 	starsweet: {
 		name: "Star Sweet",
@@ -5620,7 +5574,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		num: 1114,
 		gen: 8,
-		desc: "Evolves Milcery into Alcremie when held and spun around.",
 	},
 	steelixite: {
 		name: "Steelixite",
@@ -5635,7 +5588,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 761,
 		gen: 6,
 		isNonstandard: "Past",
-		desc: "If held by a Steelix, this item allows it to Mega Evolve in battle.",
 	},
 	steelgem: {
 		name: "Steel Gem",
@@ -5650,7 +5602,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 563,
 		gen: 5,
 		isNonstandard: "Past",
-		desc: "Holder's first successful Steel-type attack will have 1.3x power. Single use.",
 	},
 	steelmemory: {
 		name: "Steel Memory",
@@ -5666,7 +5617,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		itemUser: ["Silvally-Steel"],
 		num: 911,
 		gen: 7,
-		desc: "Holder's Multi-Attack is Steel type.",
+		isNonstandard: "Past",
 	},
 	steeliumz: {
 		name: "Steelium Z",
@@ -5679,7 +5630,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 792,
 		gen: 7,
 		isNonstandard: "Past",
-		desc: "If holder has a Steel move, this item allows it to use a Steel Z-Move.",
 	},
 	stick: {
 		name: "Stick",
@@ -5688,7 +5638,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		spritenum: 475,
 		onModifyCritRatio(critRatio, user) {
-			if (toID(user.baseSpecies.baseSpecies) === 'farfetchd') {
+			if (this.toID(user.baseSpecies.baseSpecies) === 'farfetchd') {
 				return critRatio + 2;
 			}
 		},
@@ -5696,7 +5646,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 259,
 		gen: 2,
 		isNonstandard: "Past",
-		desc: "If held by a Farfetch\u2019d, its critical hit ratio is raised by 2 stages.",
 	},
 	stickybarb: {
 		name: "Sticky Barb",
@@ -5704,13 +5653,13 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		fling: {
 			basePower: 80,
 		},
-		onResidualOrder: 26,
-		onResidualSubOrder: 2,
+		onResidualOrder: 28,
+		onResidualSubOrder: 3,
 		onResidual(pokemon) {
 			this.damage(pokemon.baseMaxhp / 8);
 		},
 		onHit(target, source, move) {
-			if (source && source !== target && !source.item && move && move.flags['contact']) {
+			if (source && source !== target && !source.item && move && this.checkMoveMakesContact(move, source, target)) {
 				const barb = target.takeItem();
 				if (!barb) return; // Gen 4 Multitype
 				source.setItem(barb);
@@ -5719,7 +5668,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		num: 288,
 		gen: 4,
-		desc: "Each turn, holder loses 1/8 max HP. An attacker making contact can receive it.",
 	},
 	stoneplate: {
 		name: "Stone Plate",
@@ -5728,7 +5676,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		onBasePowerPriority: 15,
 		onBasePower(basePower, user, target, move) {
 			if (move.type === 'Rock') {
-				return this.chainModify([0x1333, 0x1000]);
+				return this.chainModify([4915, 4096]);
 			}
 		},
 		onTakeItem(item, pokemon, source) {
@@ -5740,8 +5688,14 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		forcedForme: "Arceus-Rock",
 		num: 309,
 		gen: 4,
+	},
+	strangeball: {
+		name: "Strange Ball",
+		spritenum: 308,
+		num: 1785,
+		gen: 8,
+		isPokeball: true,
 		isNonstandard: "Unobtainable",
-		desc: "Holder's Rock-type attacks have 1.2x power. Judgment is Rock type.",
 	},
 	strawberrysweet: {
 		name: "Strawberry Sweet",
@@ -5751,7 +5705,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		num: 1109,
 		gen: 8,
-		desc: "Evolves Milcery into Alcremie when held and spun around.",
 	},
 	sunstone: {
 		name: "Sun Stone",
@@ -5761,8 +5714,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		num: 80,
 		gen: 2,
-		desc: "Evolves Gloom into Bellossom, Sunkern into Sunflora, Cottonee into Whimsicott, Petilil into Lilligant, and Helioptile into Heliolisk when used.",
-		shortDesc: "Evolves certain species of Pokemon when used.",
 	},
 	swampertite: {
 		name: "Swampertite",
@@ -5777,7 +5728,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 752,
 		gen: 6,
 		isNonstandard: "Past",
-		desc: "If held by a Swampert, this item allows it to Mega Evolve in battle.",
 	},
 	sweetapple: {
 		name: "Sweet Apple",
@@ -5787,7 +5737,15 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		num: 1116,
 		gen: 8,
-		desc: "Evolves Applin into Appletun when used.",
+	},
+	syrupyapple: {
+		name: "Syrupy Apple",
+		spritenum: 755,
+		fling: {
+			basePower: 30,
+		},
+		num: 2402,
+		gen: 9,
 	},
 	tamatoberry: {
 		name: "Tamato Berry",
@@ -5800,7 +5758,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		onEat: false,
 		num: 174,
 		gen: 3,
-		desc: "Cannot be eaten by the holder. No effect when eaten with Bug Bite or Pluck.",
 	},
 	tangaberry: {
 		name: "Tanga Berry",
@@ -5812,7 +5769,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		onSourceModifyDamage(damage, source, target, move) {
 			if (move.type === 'Bug' && target.getMoveHitData(move).typeMod > 0) {
-				const hitSub = target.volatiles['substitute'] && !move.flags['authentic'] && !(move.infiltrates && this.gen >= 6);
+				const hitSub = target.volatiles['substitute'] && !move.flags['bypasssub'] && !(move.infiltrates && this.gen >= 6);
 				if (hitSub) return;
 
 				if (target.eatItem()) {
@@ -5825,7 +5782,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		onEat() { },
 		num: 194,
 		gen: 4,
-		desc: "Halves damage taken from a supereffective Bug-type attack. Single use.",
 	},
 	tapuniumz: {
 		name: "Tapunium Z",
@@ -5837,7 +5793,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 801,
 		gen: 7,
 		isNonstandard: "Past",
-		desc: "If held by a Tapu with Nature's Madness, it can use Guardian of Alola.",
 	},
 	tartapple: {
 		name: "Tart Apple",
@@ -5847,7 +5802,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		num: 1117,
 		gen: 8,
-		desc: "Evolves Applin into Flapple when used.",
 	},
 	terrainextender: {
 		name: "Terrain Extender",
@@ -5857,7 +5811,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		num: 879,
 		gen: 7,
-		desc: "Holder's use of Electric/Grassy/Misty/Psychic Terrain lasts 8 turns instead of 5.",
 	},
 	thickclub: {
 		name: "Thick Club",
@@ -5871,10 +5824,10 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 				return this.chainModify(2);
 			}
 		},
-		itemUser: ["Marowak", "Cubone"],
+		itemUser: ["Marowak", "Marowak-Alola", "Marowak-Alola-Totem", "Cubone"],
 		num: 258,
 		gen: 2,
-		desc: "If held by a Cubone or a Marowak, its Attack is doubled.",
+		isNonstandard: "Past",
 	},
 	throatspray: {
 		name: "Throat Spray",
@@ -5892,7 +5845,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		num: 1118,
 		gen: 8,
-		desc: "Raises holder's Special Attack by 1 stage after it uses a sound move. Single use.",
 	},
 	thunderstone: {
 		name: "Thunder Stone",
@@ -5902,8 +5854,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		num: 83,
 		gen: 1,
-		desc: "Evolves Pikachu into Raichu or Alolan Raichu, Eevee into Jolteon, Eelektrik into Eelektross, and Charjabug into Vikavolt when used.",
-		shortDesc: "Evolves certain species of Pokemon when used.",
 	},
 	timerball: {
 		name: "Timer Ball",
@@ -5911,7 +5861,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 10,
 		gen: 3,
 		isPokeball: true,
-		desc: "A Poke Ball that becomes better the more turns there are in a battle.",
 	},
 	toxicorb: {
 		name: "Toxic Orb",
@@ -5920,14 +5869,13 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 			basePower: 30,
 			status: 'tox',
 		},
-		onResidualOrder: 26,
-		onResidualSubOrder: 2,
+		onResidualOrder: 28,
+		onResidualSubOrder: 3,
 		onResidual(pokemon) {
 			pokemon.trySetStatus('tox', pokemon);
 		},
 		num: 272,
 		gen: 4,
-		desc: "At the end of every turn, this item attempts to badly poison the holder.",
 	},
 	toxicplate: {
 		name: "Toxic Plate",
@@ -5936,7 +5884,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		onBasePowerPriority: 15,
 		onBasePower(basePower, user, target, move) {
 			if (move.type === 'Poison') {
-				return this.chainModify([0x1333, 0x1000]);
+				return this.chainModify([4915, 4096]);
 			}
 		},
 		onTakeItem(item, pokemon, source) {
@@ -5948,8 +5896,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		forcedForme: "Arceus-Poison",
 		num: 304,
 		gen: 4,
-		isNonstandard: "Unobtainable",
-		desc: "Holder's Poison-type attacks have 1.2x power. Judgment is Poison type.",
 	},
 	tr00: {
 		name: "TR00",
@@ -5959,7 +5905,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 721,
 		num: 1130,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Swords Dance. One use.",
+		isNonstandard: "Past",
 	},
 	tr01: {
 		name: "TR01",
@@ -5969,7 +5915,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 721,
 		num: 1131,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Body Slam. One use.",
+		isNonstandard: "Past",
 	},
 	tr02: {
 		name: "TR02",
@@ -5979,7 +5925,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 730,
 		num: 1132,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Flamethrower. One use.",
+		isNonstandard: "Past",
 	},
 	tr03: {
 		name: "TR03",
@@ -5989,7 +5935,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 731,
 		num: 1133,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Hydro Pump. One use.",
+		isNonstandard: "Past",
 	},
 	tr04: {
 		name: "TR04",
@@ -5999,7 +5945,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 731,
 		num: 1134,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Surf. One use.",
+		isNonstandard: "Past",
 	},
 	tr05: {
 		name: "TR05",
@@ -6009,7 +5955,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 735,
 		num: 1135,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Ice Beam. One use.",
+		isNonstandard: "Past",
 	},
 	tr06: {
 		name: "TR06",
@@ -6019,7 +5965,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 735,
 		num: 1136,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Blizzard. One use.",
+		isNonstandard: "Past",
 	},
 	tr07: {
 		name: "TR07",
@@ -6029,7 +5975,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 722,
 		num: 1137,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Low Kick. One use.",
+		isNonstandard: "Past",
 	},
 	tr08: {
 		name: "TR08",
@@ -6039,7 +5985,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 733,
 		num: 1138,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Thunderbolt. One use.",
+		isNonstandard: "Past",
 	},
 	tr09: {
 		name: "TR09",
@@ -6049,7 +5995,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 733,
 		num: 1139,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Thunder. One use.",
+		isNonstandard: "Past",
 	},
 	tr10: {
 		name: "TR10",
@@ -6059,7 +6005,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 725,
 		num: 1140,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Earthquake. One use.",
+		isNonstandard: "Past",
 	},
 	tr11: {
 		name: "TR11",
@@ -6069,7 +6015,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 734,
 		num: 1141,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Psychic. One use.",
+		isNonstandard: "Past",
 	},
 	tr12: {
 		name: "TR12",
@@ -6079,7 +6025,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 734,
 		num: 1142,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Agility. One use.",
+		isNonstandard: "Past",
 	},
 	tr13: {
 		name: "TR13",
@@ -6089,7 +6035,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 721,
 		num: 1143,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Focus Energy. One use.",
+		isNonstandard: "Past",
 	},
 	tr14: {
 		name: "TR14",
@@ -6099,7 +6045,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 721,
 		num: 1144,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Metronome. One use.",
+		isNonstandard: "Past",
 	},
 	tr15: {
 		name: "TR15",
@@ -6109,7 +6055,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 730,
 		num: 1145,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Fire Blast. One use.",
+		isNonstandard: "Past",
 	},
 	tr16: {
 		name: "TR16",
@@ -6119,7 +6065,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 731,
 		num: 1146,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Waterfall. One use.",
+		isNonstandard: "Past",
 	},
 	tr17: {
 		name: "TR17",
@@ -6129,7 +6075,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 734,
 		num: 1147,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Amnesia. One use.",
+		isNonstandard: "Past",
 	},
 	tr18: {
 		name: "TR18",
@@ -6139,7 +6085,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 727,
 		num: 1148,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Leech Life. One use.",
+		isNonstandard: "Past",
 	},
 	tr19: {
 		name: "TR19",
@@ -6149,7 +6095,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 721,
 		num: 1149,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Tri Attack. One use.",
+		isNonstandard: "Past",
 	},
 	tr20: {
 		name: "TR20",
@@ -6159,7 +6105,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 721,
 		num: 1150,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Substitute. One use.",
+		isNonstandard: "Past",
 	},
 	tr21: {
 		name: "TR21",
@@ -6169,7 +6115,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 722,
 		num: 1151,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Reversal. One use.",
+		isNonstandard: "Past",
 	},
 	tr22: {
 		name: "TR22",
@@ -6179,7 +6125,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 724,
 		num: 1152,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Sludge Bomb. One use.",
+		isNonstandard: "Past",
 	},
 	tr23: {
 		name: "TR23",
@@ -6189,7 +6135,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 725,
 		num: 1153,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Spikes. One use.",
+		isNonstandard: "Past",
 	},
 	tr24: {
 		name: "TR24",
@@ -6199,7 +6145,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 736,
 		num: 1154,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Outrage. One use.",
+		isNonstandard: "Past",
 	},
 	tr25: {
 		name: "TR25",
@@ -6209,7 +6155,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 734,
 		num: 1155,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Psyshock. One use.",
+		isNonstandard: "Past",
 	},
 	tr26: {
 		name: "TR26",
@@ -6219,7 +6165,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 721,
 		num: 1156,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Endure. One use.",
+		isNonstandard: "Past",
 	},
 	tr27: {
 		name: "TR27",
@@ -6229,7 +6175,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 721,
 		num: 1157,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Sleep Talk. One use.",
+		isNonstandard: "Past",
 	},
 	tr28: {
 		name: "TR28",
@@ -6239,7 +6185,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 727,
 		num: 1158,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Megahorn. One use.",
+		isNonstandard: "Past",
 	},
 	tr29: {
 		name: "TR29",
@@ -6249,7 +6195,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 721,
 		num: 1159,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Baton Pass. One use.",
+		isNonstandard: "Past",
 	},
 	tr30: {
 		name: "TR30",
@@ -6259,7 +6205,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 721,
 		num: 1160,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Encore. One use.",
+		isNonstandard: "Past",
 	},
 	tr31: {
 		name: "TR31",
@@ -6269,7 +6215,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 729,
 		num: 1161,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Iron Tail. One use.",
+		isNonstandard: "Past",
 	},
 	tr32: {
 		name: "TR32",
@@ -6279,7 +6225,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 737,
 		num: 1162,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Crunch. One use.",
+		isNonstandard: "Past",
 	},
 	tr33: {
 		name: "TR33",
@@ -6289,7 +6235,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 728,
 		num: 1163,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Shadow Ball. One use.",
+		isNonstandard: "Past",
 	},
 	tr34: {
 		name: "TR34",
@@ -6299,7 +6245,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 734,
 		num: 1164,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Future Sight. One use.",
+		isNonstandard: "Past",
 	},
 	tr35: {
 		name: "TR35",
@@ -6309,7 +6255,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 721,
 		num: 1165,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Uproar. One use.",
+		isNonstandard: "Past",
 	},
 	tr36: {
 		name: "TR36",
@@ -6319,7 +6265,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 730,
 		num: 1166,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Heat Wave. One use.",
+		isNonstandard: "Past",
 	},
 	tr37: {
 		name: "TR37",
@@ -6329,7 +6275,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 737,
 		num: 1167,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Taunt. One use.",
+		isNonstandard: "Past",
 	},
 	tr38: {
 		name: "TR38",
@@ -6339,7 +6285,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 734,
 		num: 1168,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Trick. One use.",
+		isNonstandard: "Past",
 	},
 	tr39: {
 		name: "TR39",
@@ -6349,7 +6295,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 722,
 		num: 1169,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Superpower. One use.",
+		isNonstandard: "Past",
 	},
 	tr40: {
 		name: "TR40",
@@ -6359,7 +6305,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 734,
 		num: 1170,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Skill Swap. One use.",
+		isNonstandard: "Past",
 	},
 	tr41: {
 		name: "TR41",
@@ -6369,7 +6315,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 730,
 		num: 1171,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Blaze Kick. One use.",
+		isNonstandard: "Past",
 	},
 	tr42: {
 		name: "TR42",
@@ -6379,7 +6325,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 721,
 		num: 1172,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Hyper Voice. One use.",
+		isNonstandard: "Past",
 	},
 	tr43: {
 		name: "TR43",
@@ -6389,7 +6335,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 730,
 		num: 1173,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Overheat. One use.",
+		isNonstandard: "Past",
 	},
 	tr44: {
 		name: "TR44",
@@ -6399,7 +6345,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 734,
 		num: 1174,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Cosmic Power. One use.",
+		isNonstandard: "Past",
 	},
 	tr45: {
 		name: "TR45",
@@ -6409,7 +6355,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 731,
 		num: 1175,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Muddy Water. One use.",
+		isNonstandard: "Past",
 	},
 	tr46: {
 		name: "TR46",
@@ -6419,7 +6365,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 729,
 		num: 1176,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Iron Defense. One use.",
+		isNonstandard: "Past",
 	},
 	tr47: {
 		name: "TR47",
@@ -6429,7 +6375,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 736,
 		num: 1177,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Dragon Claw. One use.",
+		isNonstandard: "Past",
 	},
 	tr48: {
 		name: "TR48",
@@ -6439,7 +6385,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 722,
 		num: 1178,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Bulk Up. One use.",
+		isNonstandard: "Past",
 	},
 	tr49: {
 		name: "TR49",
@@ -6449,7 +6395,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 734,
 		num: 1179,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Calm Mind. One use.",
+		isNonstandard: "Past",
 	},
 	tr50: {
 		name: "TR50",
@@ -6459,7 +6405,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 732,
 		num: 1180,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Leaf Blade. One use.",
+		isNonstandard: "Past",
 	},
 	tr51: {
 		name: "TR51",
@@ -6469,7 +6415,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 736,
 		num: 1181,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Dragon Dance. One use.",
+		isNonstandard: "Past",
 	},
 	tr52: {
 		name: "TR52",
@@ -6479,7 +6425,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 729,
 		num: 1182,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Gyro Ball. One use.",
+		isNonstandard: "Past",
 	},
 	tr53: {
 		name: "TR53",
@@ -6489,7 +6435,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 722,
 		num: 1183,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Close Combat. One use.",
+		isNonstandard: "Past",
 	},
 	tr54: {
 		name: "TR54",
@@ -6499,7 +6445,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 724,
 		num: 1184,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Toxic Spikes. One use.",
+		isNonstandard: "Past",
 	},
 	tr55: {
 		name: "TR55",
@@ -6509,7 +6455,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 730,
 		num: 1185,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Flare Blitz. One use.",
+		isNonstandard: "Past",
 	},
 	tr56: {
 		name: "TR56",
@@ -6519,7 +6465,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 722,
 		num: 1186,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Aura Sphere. One use.",
+		isNonstandard: "Past",
 	},
 	tr57: {
 		name: "TR57",
@@ -6529,7 +6475,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 724,
 		num: 1187,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Poison Jab. One use.",
+		isNonstandard: "Past",
 	},
 	tr58: {
 		name: "TR58",
@@ -6539,7 +6485,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 737,
 		num: 1188,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Dark Pulse. One use.",
+		isNonstandard: "Past",
 	},
 	tr59: {
 		name: "TR59",
@@ -6549,7 +6495,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 732,
 		num: 1189,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Seed Bomb. One use.",
+		isNonstandard: "Past",
 	},
 	tr60: {
 		name: "TR60",
@@ -6559,7 +6505,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 727,
 		num: 1190,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move X-Scissor. One use.",
+		isNonstandard: "Past",
 	},
 	tr61: {
 		name: "TR61",
@@ -6569,7 +6515,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 727,
 		num: 1191,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Bug Buzz. One use.",
+		isNonstandard: "Past",
 	},
 	tr62: {
 		name: "TR62",
@@ -6579,7 +6525,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 736,
 		num: 1192,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Dragon Pulse. One use.",
+		isNonstandard: "Past",
 	},
 	tr63: {
 		name: "TR63",
@@ -6589,7 +6535,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 726,
 		num: 1193,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Power Gem. One use.",
+		isNonstandard: "Past",
 	},
 	tr64: {
 		name: "TR64",
@@ -6599,7 +6545,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 722,
 		num: 1194,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Focus Blast. One use.",
+		isNonstandard: "Past",
 	},
 	tr65: {
 		name: "TR65",
@@ -6609,7 +6555,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 732,
 		num: 1195,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Energy Ball. One use.",
+		isNonstandard: "Past",
 	},
 	tr66: {
 		name: "TR66",
@@ -6619,7 +6565,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 723,
 		num: 1196,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Brave Bird. One use.",
+		isNonstandard: "Past",
 	},
 	tr67: {
 		name: "TR67",
@@ -6629,7 +6575,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 725,
 		num: 1197,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Earth Power. One use.",
+		isNonstandard: "Past",
 	},
 	tr68: {
 		name: "TR68",
@@ -6639,7 +6585,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 737,
 		num: 1198,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Nasty Plot. One use.",
+		isNonstandard: "Past",
 	},
 	tr69: {
 		name: "TR69",
@@ -6649,7 +6595,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 734,
 		num: 1199,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Zen Headbutt. One use.",
+		isNonstandard: "Past",
 	},
 	tr70: {
 		name: "TR70",
@@ -6659,7 +6605,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 729,
 		num: 1200,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Flash Cannon. One use.",
+		isNonstandard: "Past",
 	},
 	tr71: {
 		name: "TR71",
@@ -6669,7 +6615,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 732,
 		num: 1201,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Leaf Storm. One use.",
+		isNonstandard: "Past",
 	},
 	tr72: {
 		name: "TR72",
@@ -6679,7 +6625,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 732,
 		num: 1202,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Power Whip. One use.",
+		isNonstandard: "Past",
 	},
 	tr73: {
 		name: "TR73",
@@ -6689,7 +6635,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 724,
 		num: 1203,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Gunk Shot. One use.",
+		isNonstandard: "Past",
 	},
 	tr74: {
 		name: "TR74",
@@ -6699,7 +6645,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 729,
 		num: 1204,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Iron Head. One use.",
+		isNonstandard: "Past",
 	},
 	tr75: {
 		name: "TR75",
@@ -6709,7 +6655,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 726,
 		num: 1205,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Stone Edge. One use.",
+		isNonstandard: "Past",
 	},
 	tr76: {
 		name: "TR76",
@@ -6719,7 +6665,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 726,
 		num: 1206,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Stealth Rock. One use.",
+		isNonstandard: "Past",
 	},
 	tr77: {
 		name: "TR77",
@@ -6729,7 +6675,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 732,
 		num: 1207,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Grass Knot. One use.",
+		isNonstandard: "Past",
 	},
 	tr78: {
 		name: "TR78",
@@ -6739,7 +6685,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 724,
 		num: 1208,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Sludge Wave. One use.",
+		isNonstandard: "Past",
 	},
 	tr79: {
 		name: "TR79",
@@ -6749,7 +6695,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 729,
 		num: 1209,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Heavy Slam. One use.",
+		isNonstandard: "Past",
 	},
 	tr80: {
 		name: "TR80",
@@ -6759,7 +6705,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 733,
 		num: 1210,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Electro Ball. One use.",
+		isNonstandard: "Past",
 	},
 	tr81: {
 		name: "TR81",
@@ -6769,7 +6715,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 737,
 		num: 1211,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Foul Play. One use.",
+		isNonstandard: "Past",
 	},
 	tr82: {
 		name: "TR82",
@@ -6779,7 +6725,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 734,
 		num: 1212,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Stored Power. One use.",
+		isNonstandard: "Past",
 	},
 	tr83: {
 		name: "TR83",
@@ -6789,7 +6735,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 734,
 		num: 1213,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Ally Switch. One use.",
+		isNonstandard: "Past",
 	},
 	tr84: {
 		name: "TR84",
@@ -6799,7 +6745,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 731,
 		num: 1214,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Scald. One use.",
+		isNonstandard: "Past",
 	},
 	tr85: {
 		name: "TR85",
@@ -6809,7 +6755,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 721,
 		num: 1215,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Work Up. One use.",
+		isNonstandard: "Past",
 	},
 	tr86: {
 		name: "TR86",
@@ -6819,7 +6765,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 733,
 		num: 1216,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Wild Charge. One use.",
+		isNonstandard: "Past",
 	},
 	tr87: {
 		name: "TR87",
@@ -6829,7 +6775,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 725,
 		num: 1217,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Drill Run. One use.",
+		isNonstandard: "Past",
 	},
 	tr88: {
 		name: "TR88",
@@ -6839,7 +6785,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 730,
 		num: 1218,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Heat Crash. One use.",
+		isNonstandard: "Past",
 	},
 	tr89: {
 		name: "TR89",
@@ -6849,7 +6795,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 723,
 		num: 1219,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Hurricane. One use.",
+		isNonstandard: "Past",
 	},
 	tr90: {
 		name: "TR90",
@@ -6859,7 +6805,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 738,
 		num: 1220,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Play Rough. One use.",
+		isNonstandard: "Past",
 	},
 	tr91: {
 		name: "TR91",
@@ -6869,7 +6815,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 724,
 		num: 1221,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Venom Drench. One use.",
+		isNonstandard: "Past",
 	},
 	tr92: {
 		name: "TR92",
@@ -6879,7 +6825,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 738,
 		num: 1222,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Dazzling Gleam. One use.",
+		isNonstandard: "Past",
 	},
 	tr93: {
 		name: "TR93",
@@ -6889,7 +6835,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 737,
 		num: 1223,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Darkest Lariat. One use.",
+		isNonstandard: "Past",
 	},
 	tr94: {
 		name: "TR94",
@@ -6899,7 +6845,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 725,
 		num: 1224,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move High Horsepower. One use.",
+		isNonstandard: "Past",
 	},
 	tr95: {
 		name: "TR95",
@@ -6909,7 +6855,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 737,
 		num: 1225,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Throat Chop. One use.",
+		isNonstandard: "Past",
 	},
 	tr96: {
 		name: "TR96",
@@ -6919,7 +6865,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 727,
 		num: 1226,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Pollen Puff. One use.",
+		isNonstandard: "Past",
 	},
 	tr97: {
 		name: "TR97",
@@ -6929,7 +6875,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 734,
 		num: 1227,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Psychic Fangs. One use.",
+		isNonstandard: "Past",
 	},
 	tr98: {
 		name: "TR98",
@@ -6939,7 +6885,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 731,
 		num: 1228,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Liquidation. One use.",
+		isNonstandard: "Past",
 	},
 	tr99: {
 		name: "TR99",
@@ -6949,7 +6895,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		spritenum: 722,
 		num: 1229,
 		gen: 8,
-		desc: "Teaches certain Pokemon the move Body Press. One use.",
+		isNonstandard: "Past",
 	},
 	twistedspoon: {
 		name: "Twisted Spoon",
@@ -6960,12 +6906,11 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		onBasePowerPriority: 15,
 		onBasePower(basePower, user, target, move) {
 			if (move.type === 'Psychic') {
-				return this.chainModify([0x1333, 0x1000]);
+				return this.chainModify([4915, 4096]);
 			}
 		},
 		num: 248,
 		gen: 2,
-		desc: "Holder's Psychic-type attacks have 1.2x power.",
 	},
 	tyranitarite: {
 		name: "Tyranitarite",
@@ -6980,7 +6925,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 669,
 		gen: 6,
 		isNonstandard: "Past",
-		desc: "If held by a Tyranitar, this item allows it to Mega Evolve in battle.",
 	},
 	ultraball: {
 		name: "Ultra Ball",
@@ -6988,7 +6932,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 2,
 		gen: 1,
 		isPokeball: true,
-		desc: "An ultra-performance Ball that provides a higher catch rate than a Great Ball.",
 	},
 	ultranecroziumz: {
 		name: "Ultranecrozium Z",
@@ -7000,7 +6943,15 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 923,
 		gen: 7,
 		isNonstandard: "Past",
-		desc: "Dusk Mane/Dawn Wings Necrozma: Ultra Burst, then Z-Move w/ Photon Geyser.",
+	},
+	unremarkableteacup: {
+		name: "Unremarkable Teacup",
+		spritenum: 756,
+		fling: {
+			basePower: 80,
+		},
+		num: 2403,
+		gen: 9,
 	},
 	upgrade: {
 		name: "Up-Grade",
@@ -7010,7 +6961,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		num: 252,
 		gen: 2,
-		desc: "Evolves Porygon into Porygon2 when traded.",
 	},
 	utilityumbrella: {
 		name: "Utility Umbrella",
@@ -7018,11 +6968,28 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		fling: {
 			basePower: 60,
 		},
-		// Implemented in statuses.js, moves.js, and abilities.js
+		// Partially implemented in Pokemon.effectiveWeather() in sim/pokemon.ts
+		onStart(pokemon) {
+			if (!pokemon.ignoringItem()) return;
+			if (['sunnyday', 'raindance', 'desolateland', 'primordialsea'].includes(this.field.effectiveWeather())) {
+				this.runEvent('WeatherChange', pokemon, pokemon, this.effect);
+			}
+		},
+		onUpdate(pokemon) {
+			if (!this.effectState.inactive) return;
+			this.effectState.inactive = false;
+			if (['sunnyday', 'raindance', 'desolateland', 'primordialsea'].includes(this.field.effectiveWeather())) {
+				this.runEvent('WeatherChange', pokemon, pokemon, this.effect);
+			}
+		},
+		onEnd(pokemon) {
+			if (['sunnyday', 'raindance', 'desolateland', 'primordialsea'].includes(this.field.effectiveWeather())) {
+				this.runEvent('WeatherChange', pokemon, pokemon, this.effect);
+			}
+			this.effectState.inactive = true;
+		},
 		num: 1123,
 		gen: 8,
-		desc: "The holder ignores rain- and sun-based effects. Damage and accuracy calculations from attacks used by the holder are affected by rain and sun, but not attacks used against the holder.",
-		shortDesc: "The holder ignores rain- and sun-based effects.",
 	},
 	venusaurite: {
 		name: "Venusaurite",
@@ -7037,7 +7004,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 659,
 		gen: 6,
 		isNonstandard: "Past",
-		desc: "If held by a Venusaur, this item allows it to Mega Evolve in battle.",
 	},
 	wacanberry: {
 		name: "Wacan Berry",
@@ -7049,7 +7015,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		onSourceModifyDamage(damage, source, target, move) {
 			if (move.type === 'Electric' && target.getMoveHitData(move).typeMod > 0) {
-				const hitSub = target.volatiles['substitute'] && !move.flags['authentic'] && !(move.infiltrates && this.gen >= 6);
+				const hitSub = target.volatiles['substitute'] && !move.flags['bypasssub'] && !(move.infiltrates && this.gen >= 6);
 				if (hitSub) return;
 				if (target.eatItem()) {
 					this.debug('-50% reduction');
@@ -7061,15 +7027,13 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		onEat() { },
 		num: 186,
 		gen: 4,
-		desc: "Halves damage taken from a supereffective Electric-type attack. Single use.",
 	},
 	watergem: {
 		name: "Water Gem",
 		spritenum: 528,
 		isGem: true,
 		onSourceTryPrimaryHit(target, source, move) {
-			const pledges = ['firepledge', 'grasspledge', 'waterpledge'];
-			if (target === source || move.category === 'Status' || pledges.includes(move.id)) return;
+			if (target === source || move.category === 'Status' || move.flags['pledgecombo']) return;
 			if (move.type === 'Water' && source.useItem()) {
 				source.addVolatile('gem');
 			}
@@ -7077,7 +7041,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 549,
 		gen: 5,
 		isNonstandard: "Past",
-		desc: "Holder's first successful Water-type attack will have 1.3x power. Single use.",
 	},
 	watermemory: {
 		name: "Water Memory",
@@ -7093,7 +7056,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		itemUser: ["Silvally-Water"],
 		num: 913,
 		gen: 7,
-		desc: "Holder's Multi-Attack is Water type.",
+		isNonstandard: "Past",
 	},
 	waterstone: {
 		name: "Water Stone",
@@ -7103,8 +7066,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		num: 84,
 		gen: 1,
-		desc: "Evolves Poliwhirl into Poliwrath, Shellder into Cloyster, Staryu into Starmie, Eevee into Vaporeon, Lombre into Ludicolo, and Panpour into Simipour when used.",
-		shortDesc: "Evolves certain species of Pokemon when used.",
 	},
 	wateriumz: {
 		name: "Waterium Z",
@@ -7117,7 +7078,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 778,
 		gen: 7,
 		isNonstandard: "Past",
-		desc: "If holder has a Water move, this item allows it to use a Water Z-Move.",
 	},
 	watmelberry: {
 		name: "Watmel Berry",
@@ -7131,7 +7091,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 181,
 		gen: 3,
 		isNonstandard: "Past",
-		desc: "Cannot be eaten by the holder. No effect when eaten with Bug Bite or Pluck.",
 	},
 	waveincense: {
 		name: "Wave Incense",
@@ -7142,12 +7101,12 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		onBasePowerPriority: 15,
 		onBasePower(basePower, user, target, move) {
 			if (move.type === 'Water') {
-				return this.chainModify([0x1333, 0x1000]);
+				return this.chainModify([4915, 4096]);
 			}
 		},
 		num: 317,
 		gen: 4,
-		desc: "Holder's Water-type attacks have 1.2x power.",
+		isNonstandard: "Past",
 	},
 	weaknesspolicy: {
 		name: "Weakness Policy",
@@ -7155,12 +7114,8 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		fling: {
 			basePower: 80,
 		},
-		onHitPriority: 1,
-		onHit(target, source, move) {
-			if (
-				target.hp && move.category !== 'Status' && !move.damage &&
-				!move.damageCallback && target.getMoveHitData(move).typeMod > 0
-			) {
+		onDamagingHit(damage, target, source, move) {
+			if (!move.damage && !move.damageCallback && target.getMoveHitData(move).typeMod > 0) {
 				target.useItem();
 			}
 		},
@@ -7170,7 +7125,27 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		num: 639,
 		gen: 6,
-		desc: "If holder is hit super effectively, raises Attack, Sp. Atk by 2 stages. Single use.",
+	},
+	wellspringmask: {
+		name: "Wellspring Mask",
+		spritenum: 759,
+		fling: {
+			basePower: 60,
+		},
+		onBasePowerPriority: 15,
+		onBasePower(basePower, user, target, move) {
+			if (user.baseSpecies.name.startsWith('Ogerpon-Wellspring')) {
+				return this.chainModify([4915, 4096]);
+			}
+		},
+		onTakeItem(item, source) {
+			if (source.baseSpecies.baseSpecies === 'Ogerpon') return false;
+			return true;
+		},
+		forcedForme: "Ogerpon-Wellspring",
+		itemUser: ["Ogerpon-Wellspring"],
+		num: 2407,
+		gen: 9,
 	},
 	wepearberry: {
 		name: "Wepear Berry",
@@ -7184,7 +7159,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 167,
 		gen: 3,
 		isNonstandard: "Past",
-		desc: "Cannot be eaten by the holder. No effect when eaten with Bug Bite or Pluck.",
 	},
 	whippeddream: {
 		name: "Whipped Dream",
@@ -7194,7 +7168,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		num: 646,
 		gen: 6,
-		desc: "Evolves Swirlix into Slurpuff when traded.",
+		isNonstandard: "Past",
 	},
 	whiteherb: {
 		name: "White Herb",
@@ -7204,7 +7178,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 			effect(pokemon) {
 				let activate = false;
 				const boosts: SparseBoostsTable = {};
-				let i: BoostName;
+				let i: BoostID;
 				for (i in pokemon.boosts) {
 					if (pokemon.boosts[i] < 0) {
 						activate = true;
@@ -7217,10 +7191,17 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 				}
 			},
 		},
+		onAnySwitchInPriority: -2,
+		onAnySwitchIn() {
+			((this.effect as any).onUpdate as (p: Pokemon) => void).call(this, this.effectState.target);
+		},
+		onStart(pokemon) {
+			((this.effect as any).onUpdate as (p: Pokemon) => void).call(this, pokemon);
+		},
 		onUpdate(pokemon) {
 			let activate = false;
 			const boosts: SparseBoostsTable = {};
-			let i: BoostName;
+			let i: BoostID;
 			for (i in pokemon.boosts) {
 				if (pokemon.boosts[i] < 0) {
 					activate = true;
@@ -7234,7 +7215,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		num: 214,
 		gen: 3,
-		desc: "Restores all lowered stat stages to 0 when one is less than 0. Single use.",
 	},
 	widelens: {
 		name: "Wide Lens",
@@ -7242,14 +7222,14 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		fling: {
 			basePower: 10,
 		},
+		onSourceModifyAccuracyPriority: -2,
 		onSourceModifyAccuracy(accuracy) {
 			if (typeof accuracy === 'number') {
-				return accuracy * 1.1;
+				return this.chainModify([4505, 4096]);
 			}
 		},
 		num: 265,
 		gen: 4,
-		desc: "The accuracy of attacks by the holder is 1.1x.",
 	},
 	wikiberry: {
 		name: "Wiki Berry",
@@ -7260,22 +7240,22 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 			type: "Rock",
 		},
 		onUpdate(pokemon) {
-			if (pokemon.hp <= pokemon.maxhp / 4 || (pokemon.hp <= pokemon.maxhp / 2 && pokemon.hasAbility('gluttony'))) {
+			if (pokemon.hp <= pokemon.maxhp / 4 || (pokemon.hp <= pokemon.maxhp / 2 &&
+				pokemon.hasAbility('gluttony') && pokemon.abilityState.gluttony)) {
 				pokemon.eatItem();
 			}
 		},
 		onTryEatItem(item, pokemon) {
-			if (!this.runEvent('TryHeal', pokemon)) return false;
+			if (!this.runEvent('TryHeal', pokemon, null, this.effect, pokemon.baseMaxhp / 3)) return false;
 		},
 		onEat(pokemon) {
-			this.heal(pokemon.baseMaxhp * 0.33);
+			this.heal(pokemon.baseMaxhp / 3);
 			if (pokemon.getNature().minus === 'spa') {
 				pokemon.addVolatile('confusion');
 			}
 		},
 		num: 160,
 		gen: 3,
-		desc: "Restores 33% max HP at 1/4 max HP or less; confuses if -SpA Nature. Single use.",
 	},
 	wiseglasses: {
 		name: "Wise Glasses",
@@ -7286,12 +7266,11 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		onBasePowerPriority: 16,
 		onBasePower(basePower, user, target, move) {
 			if (move.category === 'Special') {
-				return this.chainModify([0x1199, 0x1000]);
+				return this.chainModify([4505, 4096]);
 			}
 		},
 		num: 267,
 		gen: 4,
-		desc: "Holder's special attacks have 1.1x power.",
 	},
 	yacheberry: {
 		name: "Yache Berry",
@@ -7303,7 +7282,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		},
 		onSourceModifyDamage(damage, source, target, move) {
 			if (move.type === 'Ice' && target.getMoveHitData(move).typeMod > 0) {
-				const hitSub = target.volatiles['substitute'] && !move.flags['authentic'] && !(move.infiltrates && this.gen >= 6);
+				const hitSub = target.volatiles['substitute'] && !move.flags['bypasssub'] && !(move.infiltrates && this.gen >= 6);
 				if (hitSub) return;
 
 				if (target.eatItem()) {
@@ -7316,7 +7295,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		onEat() { },
 		num: 188,
 		gen: 4,
-		desc: "Halves damage taken from a supereffective Ice-type attack. Single use.",
 	},
 	zapplate: {
 		name: "Zap Plate",
@@ -7325,7 +7303,7 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		onBasePowerPriority: 15,
 		onBasePower(basePower, user, target, move) {
 			if (move.type === 'Electric') {
-				return this.chainModify([0x1333, 0x1000]);
+				return this.chainModify([4915, 4096]);
 			}
 		},
 		onTakeItem(item, pokemon, source) {
@@ -7337,8 +7315,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		forcedForme: "Arceus-Electric",
 		num: 300,
 		gen: 4,
-		isNonstandard: "Unobtainable",
-		desc: "Holder's Electric-type attacks have 1.2x power. Judgment is Electric type.",
 	},
 	zoomlens: {
 		name: "Zoom Lens",
@@ -7346,15 +7322,15 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		fling: {
 			basePower: 10,
 		},
+		onSourceModifyAccuracyPriority: -2,
 		onSourceModifyAccuracy(accuracy, target) {
 			if (typeof accuracy === 'number' && !this.queue.willMove(target)) {
 				this.debug('Zoom Lens boosting accuracy');
-				return accuracy * 1.2;
+				return this.chainModify([4915, 4096]);
 			}
 		},
 		num: 276,
 		gen: 4,
-		desc: "The accuracy of attacks by the holder is 1.2x if it moves after its target.",
 	},
 
 	// Gen 2 items
@@ -7363,14 +7339,16 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		name: "Berserk Gene",
 		spritenum: 388,
 		onUpdate(pokemon) {
-			this.boost({atk: 2});
-			pokemon.addVolatile('confusion');
-			pokemon.setItem('');
+			if (pokemon.useItem()) {
+				pokemon.addVolatile('confusion');
+			}
+		},
+		boosts: {
+			atk: 2,
 		},
 		num: 0,
 		gen: 2,
 		isNonstandard: "Past",
-		desc: "(Gen 2) On switch-in, raises holder's Attack by 2 and confuses it. Single use.",
 	},
 	berry: {
 		name: "Berry",
@@ -7380,14 +7358,14 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 			basePower: 80,
 			type: "Poison",
 		},
-		onResidualOrder: 5,
+		onResidualOrder: 10,
 		onResidual(pokemon) {
 			if (pokemon.hp <= pokemon.maxhp / 2) {
 				pokemon.eatItem();
 			}
 		},
 		onTryEatItem(item, pokemon) {
-			if (!this.runEvent('TryHeal', pokemon)) return false;
+			if (!this.runEvent('TryHeal', pokemon, null, this.effect, 10)) return false;
 		},
 		onEat(pokemon) {
 			this.heal(10);
@@ -7395,7 +7373,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 155,
 		gen: 2,
 		isNonstandard: "Past",
-		desc: "(Gen 2) Restores 10 HP when at 1/2 max HP or less. Single use.",
 	},
 	bitterberry: {
 		name: "Bitter Berry",
@@ -7416,7 +7393,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 156,
 		gen: 2,
 		isNonstandard: "Past",
-		desc: "(Gen 2) Holder is cured if it is confused. Single use.",
 	},
 	burntberry: {
 		name: "Burnt Berry",
@@ -7439,7 +7415,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 153,
 		gen: 2,
 		isNonstandard: "Past",
-		desc: "(Gen 2) Holder is cured if it is frozen. Single use.",
 	},
 	goldberry: {
 		name: "Gold Berry",
@@ -7449,14 +7424,14 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 			basePower: 80,
 			type: "Psychic",
 		},
-		onResidualOrder: 5,
+		onResidualOrder: 10,
 		onResidual(pokemon) {
 			if (pokemon.hp <= pokemon.maxhp / 2) {
 				pokemon.eatItem();
 			}
 		},
 		onTryEatItem(item, pokemon) {
-			if (!this.runEvent('TryHeal', pokemon)) return false;
+			if (!this.runEvent('TryHeal', pokemon, null, this.effect, 30)) return false;
 		},
 		onEat(pokemon) {
 			this.heal(30);
@@ -7464,7 +7439,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 158,
 		gen: 2,
 		isNonstandard: "Past",
-		desc: "(Gen 2) Restores 30 HP when at 1/2 max HP or less. Single use.",
 	},
 	iceberry: {
 		name: "Ice Berry",
@@ -7487,7 +7461,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 152,
 		gen: 2,
 		isNonstandard: "Past",
-		desc: "(Gen 2) Holder is cured if it is burned. Single use.",
 	},
 	mintberry: {
 		name: "Mint Berry",
@@ -7510,7 +7483,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 150,
 		gen: 2,
 		isNonstandard: "Past",
-		desc: "(Gen 2) Holder wakes up if it is asleep. Single use.",
 	},
 	miracleberry: {
 		name: "Miracle Berry",
@@ -7532,7 +7504,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 157,
 		gen: 2,
 		isNonstandard: "Past",
-		desc: "(Gen 2) Holder cures itself if it is confused or has a status condition. Single use.",
 	},
 	mysteryberry: {
 		name: "Mystery Berry",
@@ -7572,7 +7543,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 154,
 		gen: 2,
 		isNonstandard: "Past",
-		desc: "(Gen 2) Restores 5 PP to the first of the holder's moves to reach 0 PP. Single use.",
 	},
 	pinkbow: {
 		name: "Pink Bow",
@@ -7585,7 +7555,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 251,
 		gen: 2,
 		isNonstandard: "Past",
-		desc: "(Gen 2) Holder's Normal-type attacks have 1.1x power.",
 	},
 	polkadotbow: {
 		name: "Polkadot Bow",
@@ -7598,7 +7567,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 251,
 		gen: 2,
 		isNonstandard: "Past",
-		desc: "(Gen 2) Holder's Normal-type attacks have 1.1x power.",
 	},
 	przcureberry: {
 		name: "PRZ Cure Berry",
@@ -7621,7 +7589,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 149,
 		gen: 2,
 		isNonstandard: "Past",
-		desc: "(Gen 2) Holder cures itself if it is paralyzed. Single use.",
 	},
 	psncureberry: {
 		name: "PSN Cure Berry",
@@ -7644,7 +7611,6 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: 151,
 		gen: 2,
 		isNonstandard: "Past",
-		desc: "(Gen 2) Holder is cured if it is poisoned. Single use.",
 	},
 
 	// CAP items
@@ -7662,6 +7628,29 @@ export const BattleItems: {[itemid: string]: ItemData} = {
 		num: -1,
 		gen: 6,
 		isNonstandard: "CAP",
-		desc: "If held by a Crucibelle, this item allows it to Mega Evolve in battle.",
+	},
+	vilevial: {
+		name: "Vile Vial",
+		spritenum: 752,
+		fling: {
+			basePower: 60,
+		},
+		onBasePowerPriority: 15,
+		onBasePower(basePower, user, target, move) {
+			if (user.baseSpecies.num === -66 && ['Poison', 'Flying'].includes(move.type)) {
+				return this.chainModify([4915, 4096]);
+			}
+		},
+		onTakeItem(item, pokemon, source) {
+			if (source?.baseSpecies.num === -66 || pokemon.baseSpecies.num === -66) {
+				return false;
+			}
+			return true;
+		},
+		forcedForme: "Venomicon-Epilogue",
+		itemUser: ["Venomicon-Epilogue"],
+		num: -2,
+		gen: 8,
+		isNonstandard: "CAP",
 	},
 };

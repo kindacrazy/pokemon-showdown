@@ -9,14 +9,12 @@
  * @author Guangcong Luo <guangcongluo@gmail.com>
  */
 
-import {BattleStream, getPlayerStreams} from '../battle-stream';
-import {Dex} from '../dex';
-import {RandomPlayerAI} from '../tools/random-player-ai';
+import { BattleStream, getPlayerStreams, Teams } from '..';
+import { RandomPlayerAI } from '../tools/random-player-ai';
 
 /*********************************************************************
  * Run AI
  *********************************************************************/
-// tslint:disable:no-floating-promises
 
 const streams = getPlayerStreams(new BattleStream());
 
@@ -25,11 +23,11 @@ const spec = {
 };
 const p1spec = {
 	name: "Bot 1",
-	team: Dex.packTeam(Dex.generateTeam('gen7randombattle')),
+	team: Teams.pack(Teams.generate('gen7randombattle')),
 };
 const p2spec = {
 	name: "Bot 2",
-	team: Dex.packTeam(Dex.generateTeam('gen7randombattle')),
+	team: Teams.pack(Teams.generate('gen7randombattle')),
 };
 
 const p1 = new RandomPlayerAI(streams.p1);
@@ -42,9 +40,7 @@ void p1.start();
 void p2.start();
 
 void (async () => {
-	let chunk;
-	// tslint:disable-next-line no-conditional-assignment
-	while ((chunk = await streams.omniscient.read())) {
+	for await (const chunk of streams.omniscient) {
 		console.log(chunk);
 	}
 })();

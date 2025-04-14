@@ -1,5 +1,5 @@
-export const BattleTypeChart: {[k: string]: ModdedTypeData} = {
-	Dark: {
+export const TypeChart: import('../../../sim/dex-data').ModdedTypeDataTable = {
+	dark: {
 		inherit: true,
 		damageTaken: {
 			Bug: 1,

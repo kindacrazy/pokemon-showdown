@@ -2,15 +2,19 @@
  * Simulator State
  * Pokemon Showdown - http://pokemonshowdown.com/
  *
+ * Helper functions for serializing Battle instances to JSON and back.
+ *
+ * (You might also consider using input logs instead.)
+ *
  * @license MIT
  */
 
-import {Battle} from './battle';
-import * as Data from './dex-data';
-import {Field} from './field';
-import {Pokemon} from './pokemon';
-import {PRNG} from './prng';
-import {Choice, Side} from './side';
+import { Battle } from './battle';
+import { Dex } from './dex';
+import { Field } from './field';
+import { Pokemon } from './pokemon';
+import { PRNG } from './prng';
+import { type Choice, Side } from './side';
 
 // The simulator supports up to 24 different Pokemon on a team. Serialization
 // uses letters instead of numbers to indicate indices/positions, but where
@@ -25,7 +29,7 @@ const POSITIONS = 'abcdefghijklmnopqrstuvwx';
 // and thus can simply be reconsituted as needed.
 // NOTE: Species is not strictly immutable as some OM formats rely on an
 // onModifySpecies event - deserialization is not possible for such formats.
-type Referable = Battle | Field | Side | Pokemon | PureEffect | Ability | Item | Move | Species;
+type Referable = Battle | Field | Side | Pokemon | Condition | Ability | Item | Move | Species;
 
 // Certain fields are either redundant (transient caches, constants, duplicate
 // information) or require special treatment. These sets contain the specific
@@ -33,16 +37,15 @@ type Referable = Battle | Field | Side | Pokemon | PureEffect | Ability | Item |
 // need special treatment from these sets are then handled manually.
 
 const BATTLE = new Set([
-	'dex', 'gen', 'ruleTable', 'id', 'log', 'inherit', 'format',
-	'zMoveTable', 'teamGenerator', 'NOT_FAIL', 'FAIL', 'SILENT_FAIL',
-	'field', 'sides', 'prng', 'hints', 'deserialized', 'maxMoveTable',
-	'queue',
+	'dex', 'gen', 'ruleTable', 'id', 'log', 'inherit', 'format', 'teamGenerator',
+	'HIT_SUBSTITUTE', 'NOT_FAIL', 'FAIL', 'SILENT_FAIL', 'field', 'sides', 'prng', 'hints',
+	'deserialized', 'queue', 'actions',
 ]);
 const FIELD = new Set(['id', 'battle']);
 const SIDE = new Set(['battle', 'team', 'pokemon', 'choice', 'activeRequest']);
 const POKEMON = new Set([
-	'side', 'battle', 'set', 'name', 'fullname', 'id', 'species',
-	'id', 'happiness', 'level', 'pokeball', 'baseMoveSlots',
+	'side', 'battle', 'set', 'name', 'fullname', 'id',
+	'happiness', 'level', 'pokeball', 'baseMoveSlots',
 ]);
 const CHOICE = new Set(['switchIns']);
 const ACTIVE_MOVE = new Set(['move']);
@@ -53,7 +56,6 @@ export const State = new class {
 	// due to circular module dependencies on Battle and Field instead
 	// of simply initializing it as a const. See isReferable for where this
 	// gets lazily created on demand.
-	// tslint:disable-next-line: ban-types
 	REFERABLE?: Set<Function>;
 
 	serializeBattle(battle: Battle): /* Battle */ AnyObject {
@@ -63,12 +65,12 @@ export const State = new class {
 		for (const [i, side] of battle.sides.entries()) {
 			state.sides[i] = this.serializeSide(side);
 		}
-		state.prng = battle.prng.seed;
+		state.prng = battle.prng.getSeed();
 		state.hints = Array.from(battle.hints);
 		// We treat log specially because we only set it back on Battle after everything
 		// else has been deserialized to avoid anything accidentally `add`-ing to it.
 		state.log = battle.log;
-		state.queue = this.serializeWithRefs([...battle.queue], battle);
+		state.queue = this.serializeWithRefs(battle.queue.list, battle);
 		state.formatid = battle.format.id;
 		return state;
 	}
@@ -100,7 +102,7 @@ export const State = new class {
 			// encoding format used deserializeSide for where we reorder the Side's
 			// pokemon to match their ordering at the point of serialization.
 			const team = side.team.split(side.team.length > 9 ? ',' : '');
-			// @ts-ignore - index signature
+			// @ts-expect-error index signature
 			options[side.id] = {
 				name: side.name,
 				avatar: side.avatar,
@@ -139,19 +141,32 @@ export const State = new class {
 		// states we wouldnt be using, but also because battle.getRequests will mutate
 		// state on occasion (eg. `pokemon.getMoves` sets `pokemon.trapped = true` if locked).
 		if (activeRequests) {
-			const requests = battle.getRequests(battle.requestState, battle.getMaxTeamSize());
+			const requests = battle.getRequests(battle.requestState);
 			for (const [i, side] of state.sides.entries()) {
 				battle.sides[i].activeRequest = side.activeRequest === null ? null : requests[i];
 			}
 		}
 		battle.prng = new PRNG(state.prng);
 		const queue = this.deserializeWithRefs(state.queue, battle);
-		battle.queue.push(...queue);
-		// @ts-ignore - readonly
-		battle.hints = new Set(state.hints);
-		// @ts-ignore - readonly
-		battle.log = state.log;
+		battle.queue.list = queue;
+		(battle as any).hints = new Set(state.hints);
+		(battle as any).log = state.log;
 		return battle;
+	}
+
+	// Direct comparisons of serialized state will be flakey as the timestamp
+	// protocol message |t:| can diverge between two different runs over the same state.
+	// State must first be normalized before it is comparable.
+	normalize(state: AnyObject) {
+		state.log = this.normalizeLog(state.log);
+		return state;
+	}
+
+	normalizeLog(log?: null | string | string[]) {
+		if (!log) return log;
+		const normalized = (typeof log === 'string' ? log.split('\n') : log).map(line =>
+			line.startsWith(`|t:|`) ? `|t:|` : line);
+		return (typeof log === 'string' ? normalized.join('\n') : normalized);
 	}
 
 	serializeField(field: Field): /* Field */ AnyObject {
@@ -208,8 +223,7 @@ export const State = new class {
 
 	deserializePokemon(state: /* Pokemon */ AnyObject, pokemon: Pokemon) {
 		this.deserialize(state, pokemon, POKEMON, pokemon.battle);
-		// @ts-ignore - readonly
-		pokemon.set = state.set;
+		(pokemon as any).set = state.set;
 		// baseMoveSlots and moveSlots need to point to the same objects (ie. identity, not equality).
 		// If we serialized the baseMoveSlots, replace any that match moveSlots to preserve the
 		// identity relationship requirement.
@@ -225,8 +239,7 @@ export const State = new class {
 		} else {
 			baseMoveSlots = pokemon.moveSlots.slice();
 		}
-		// @ts-ignore - readonly
-		pokemon.baseMoveSlots = baseMoveSlots;
+		(pokemon as any).baseMoveSlots = baseMoveSlots;
 		if (state.showCure === undefined) pokemon.showCure = undefined;
 	}
 
@@ -243,7 +256,7 @@ export const State = new class {
 
 	// Simply looking for a 'hit' field to determine if an object is an ActiveMove or not seems
 	// pretty fragile, but its no different than what the simulator is doing. We go further and
-	// also check if the object has an 'id', as that's what we will intrepret as the Move.
+	// also check if the object has an 'id', as that's what we will interpret as the Move.
 	isActiveMove(obj: AnyObject): obj is ActiveMove {
 		return obj.hasOwnProperty('hit') && (obj.hasOwnProperty('id') || obj.hasOwnProperty('move'));
 	}
@@ -258,13 +271,13 @@ export const State = new class {
 	// a bug in the simulator if it ever happened, but if not, the isActiveMove check can
 	// be extended.
 	serializeActiveMove(move: ActiveMove, battle: Battle): /* ActiveMove */ AnyObject {
-		const base = battle.dex.getMove(move.id);
+		const base = battle.dex.moves.get(move.id);
 		const skip = new Set([...ACTIVE_MOVE]);
 		for (const [key, value] of Object.entries(base)) {
 			// This should really be a deepEquals check to see if anything on ActiveMove was
 			// modified from the base Move, but that ends up being expensive and mostly unnecessary
 			// as ActiveMove currently only mutates its simple fields (eg. `type`, `target`) anyway.
-			// @ts-ignore - index signature
+			// @ts-expect-error index signature
 			if (typeof value === 'object' || move[key] === value) skip.add(key);
 		}
 		const state: /* ActiveMove */ AnyObject = this.serialize(move, skip, battle);
@@ -306,7 +319,7 @@ export const State = new class {
 				// needs to be serialized as an Array/Object respectively - see how
 				// Battle 'hints' or Choice 'switchIns' are handled (and you will likely
 				// need to add the new field to the respective skip constant).
-				throw new TypeError(`Unsupported type ${obj.constructor.name}: ${obj}`);
+				throw new TypeError(`Unsupported type ${obj.constructor.name}: ${obj as any}`);
 			}
 
 			const o: any = {};
@@ -354,8 +367,8 @@ export const State = new class {
 		// NOTE: see explanation on the declaration above for why this must be defined lazily.
 		if (!this.REFERABLE) {
 			this.REFERABLE = new Set([
-				Battle, Field, Side, Pokemon, Data.PureEffect,
-				Data.Ability, Data.Item, Data.Move, Data.Species,
+				Battle, Field, Side, Pokemon, Dex.Condition,
+				Dex.Ability, Dex.Item, Dex.Move, Dex.Species,
 			]);
 		}
 		return this.REFERABLE.has(obj.constructor);
@@ -375,7 +388,7 @@ export const State = new class {
 		// class types to be decode, so we're probably OK. We could make the reference
 		// markers more esoteric with additional sigils etc to avoid collisions, but
 		// we're making a conscious decision to favor readability over robustness.
-		if (ref.charAt(0) !== '[' && ref.slice(-1) !== ']') return undefined;
+		if (!ref.startsWith('[') && !ref.endsWith(']')) return undefined;
 
 		ref = ref.substring(1, ref.length - 1);
 		// There's only one instance of these thus they don't need an id to differentiate.
@@ -386,11 +399,11 @@ export const State = new class {
 		switch (type) {
 		case 'Side': return battle.sides[Number(id[1]) - 1];
 		case 'Pokemon': return battle.sides[Number(id[1]) - 1].pokemon[POSITIONS.indexOf(id[2])];
-		case 'Ability': return battle.dex.getAbility(id);
-		case 'Item': return battle.dex.getItem(id);
-		case 'Move': return battle.dex.getMove(id);
-		case 'PureEffect': return battle.dex.getEffect(id);
-		case 'Species': return battle.dex.getSpecies(id);
+		case 'Ability': return battle.dex.abilities.get(id);
+		case 'Item': return battle.dex.items.get(id);
+		case 'Move': return battle.dex.moves.get(id);
+		case 'Condition': return battle.dex.conditions.get(id);
+		case 'Species': return battle.dex.species.get(id);
 		default: return undefined; // maybe we actually got unlucky and its a string
 		}
 	}
@@ -410,7 +423,7 @@ export const State = new class {
 	deserialize(state: AnyObject, obj: object, skip: Set<string>, battle: Battle) {
 		for (const [key, value] of Object.entries(state)) {
 			if (skip.has(key)) continue;
-			// @ts-ignore - index signature
+			// @ts-expect-error index signature
 			obj[key] = this.deserializeWithRefs(value, battle);
 		}
 	}

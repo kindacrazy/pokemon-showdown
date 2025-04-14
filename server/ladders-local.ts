@@ -13,7 +13,7 @@
  * @license MIT
  */
 
-import {FS} from '../lib/fs';
+import { FS, Utils } from '../lib';
 
 // ladderCaches = {formatid: ladder OR Promise(ladder)}
 // Use Ladders(formatid).ladder to guarantee a Promise(ladder).
@@ -53,18 +53,16 @@ export class LadderStore {
 		// ladderCaches[formatid]
 		const cachedLadder = ladderCaches.get(this.formatid);
 		if (cachedLadder) {
-			// @ts-ignore
-			if (cachedLadder.then) {
+			if ((cachedLadder as Promise<LadderRow[]>).then) {
 				const ladder = await cachedLadder;
 				return (this.ladder = ladder);
 			}
-			// @ts-ignore
-			return (this.ladder = cachedLadder);
+			return (this.ladder = cachedLadder as LadderRow[]);
 		}
 		try {
 			const data = await FS('config/ladders/' + this.formatid + '.tsv').readIfExists();
 			const ladder: LadderRow[] = [];
-			for (const dataLine of data.split('\n')) {
+			for (const dataLine of data.split('\n').slice(1)) {
 				const line = dataLine.trim();
 				if (!line) continue;
 				const row = line.split('\t');
@@ -73,7 +71,7 @@ export class LadderStore {
 			// console.log('Ladders(' + this.formatid + ') loaded tsv: ' + JSON.stringify(this.ladder));
 			ladderCaches.set(this.formatid, (this.ladder = ladder));
 			return this.ladder;
-		} catch (err) {
+		} catch {
 			// console.log('Ladders(' + this.formatid + ') err loading tsv: ' + JSON.stringify(this.ladder));
 		}
 		ladderCaches.set(this.formatid, (this.ladder = []));
@@ -99,7 +97,7 @@ export class LadderStore {
 		for (const row of ladder) {
 			void stream.write(row.slice(1).join('\t') + '\r\n');
 		}
-		void stream.end();
+		void stream.writeEnd();
 		this.saving = false;
 	}
 
@@ -130,7 +128,7 @@ export class LadderStore {
 	 */
 	async getTop(prefix?: string) {
 		const formatid = this.formatid;
-		const name = Dex.getFormat(formatid).name;
+		const name = Dex.formats.get(formatid).name;
 		const ladder = await this.getLadder();
 		let buf = `<h3>${name} Top 100</h3>`;
 		buf += `<table>`;
@@ -171,30 +169,7 @@ export class LadderStore {
 	updateRow(row: LadderRow, score: number, foeElo: number) {
 		let elo = row[1];
 
-		// The K factor determines how much your Elo changes when you win or
-		// lose games. Larger K means more change.
-		// In the "original" Elo, K is constant, but it's common for K to
-		// get smaller as your rating goes up
-		let K = 50;
-
-		// dynamic K-scaling (optional)
-		if (elo < 1200) {
-			if (score < 0.5) {
-				K = 10 + (elo - 1000) * 40 / 200;
-			} else if (score > 0.5) {
-				K = 90 - (elo - 1000) * 40 / 200;
-			}
-		} else if (elo > 1350 && elo <= 1600) {
-			K = 40;
-		} else {
-			K = 32;
-		}
-
-		// main Elo formula
-		const E = 1 / (1 + Math.pow(10, (foeElo - elo) / 400));
-		elo += K * (score - E);
-
-		if (elo < 1000) elo = 1000;
+		elo = this.calculateElo(elo, score, foeElo);
 
 		row[1] = elo;
 		if (score > 0.6) {
@@ -204,7 +179,7 @@ export class LadderStore {
 		} else {
 			row[5]++; // tie
 		}
-		row[6] = '' + new Date();
+		row[6] = `${new Date()}`;
 	}
 
 	/**
@@ -282,20 +257,20 @@ export class LadderStore {
 				return [p1score, null, null];
 			}
 
-			let reasons = '' + (Math.round(p1newElo) - Math.round(p1elo)) + ' for ' + (p1score > 0.9 ? 'winning' : (p1score < 0.1 ? 'losing' : 'tying'));
-			if (reasons.charAt(0) !== '-') reasons = '+' + reasons;
+			let reasons = `${Math.round(p1newElo) - Math.round(p1elo)} for ${p1score > 0.9 ? 'winning' : (p1score < 0.1 ? 'losing' : 'tying')}`;
+			if (!reasons.startsWith('-')) reasons = '+' + reasons;
 			room.addRaw(
-				Chat.html`${p1name}'s rating: ${Math.round(p1elo)} &rarr; <strong>${Math.round(p1newElo)}</strong><br />(${reasons})`
+				Utils.html`${p1name}'s rating: ${Math.round(p1elo)} &rarr; <strong>${Math.round(p1newElo)}</strong><br />(${reasons})`
 			);
 
-			reasons = '' + (Math.round(p2newElo) - Math.round(p2elo)) + ' for ' + (p2score > 0.9 ? 'winning' : (p2score < 0.1 ? 'losing' : 'tying'));
-			if (reasons.charAt(0) !== '-') reasons = '+' + reasons;
+			reasons = `${Math.round(p2newElo) - Math.round(p2elo)} for ${p2score > 0.9 ? 'winning' : (p2score < 0.1 ? 'losing' : 'tying')}`;
+			if (!reasons.startsWith('-')) reasons = '+' + reasons;
 			room.addRaw(
-				Chat.html`${p2name}'s rating: ${Math.round(p2elo)} &rarr; <strong>${Math.round(p2newElo)}</strong><br />(${reasons})`
+				Utils.html`${p2name}'s rating: ${Math.round(p2elo)} &rarr; <strong>${Math.round(p2newElo)}</strong><br />(${reasons})`
 			);
 
 			room.update();
-		} catch (e) {
+		} catch (e: any) {
 			if (!room.battle) return [p1score, null, null];
 			room.addRaw(`There was an error calculating rating changes:`);
 			room.add(e.stack);
@@ -322,13 +297,44 @@ export class LadderStore {
 	}
 
 	/**
+	 * Calculates Elo based on a match result
+	 */
+	calculateElo(oldElo: number, score: number, foeElo: number): number {
+		// The K factor determines how much your Elo changes when you win or
+		// lose games. Larger K means more change.
+		// In the "original" Elo, K is constant, but it's common for K to
+		// get smaller as your rating goes up
+		let K = 50;
+
+		// dynamic K-scaling (optional)
+		if (oldElo < 1200) {
+			if (score < 0.5) {
+				K = 10 + (oldElo - 1000) * 40 / 200;
+			} else if (score > 0.5) {
+				K = 90 - (oldElo - 1000) * 40 / 200;
+			}
+		} else if (oldElo > 1350 && oldElo <= 1600) {
+			K = 40;
+		} else {
+			K = 32;
+		}
+
+		// main Elo formula
+		const E = 1 / (1 + 10 ** ((foeElo - oldElo) / 400));
+
+		const newElo = oldElo + K * (score - E);
+
+		return Math.max(newElo, 1000);
+	}
+
+	/**
 	 * Returns a Promise for an array of strings of <tr>s for ladder ratings of the user
 	 */
 	static visualizeAll(username: string) {
 		const ratings = [];
-		for (const i in Dex.formats) {
-			if (Dex.formats[i].searchShow) {
-				ratings.push(new LadderStore(i).visualize(username));
+		for (const format of Dex.formats.all()) {
+			if (format.searchShow) {
+				ratings.push(new LadderStore(format.id).visualize(username));
 			}
 		}
 		return Promise.all(ratings);

@@ -2,8 +2,8 @@
 
 const assert = require('assert').strict;
 
-describe('Chat', function () {
-	it('should run formatText correctly', function () {
+describe('Chat', () => {
+	it('should run formatText correctly', () => {
 		assert.equal(
 			Chat.formatText(`hi **__bold italics__** ^^superscript^^ \\\\subscript\\\\ normal ~~strikethrough~~ bye`),
 			`hi <b><i>bold italics</i></b> <sup>superscript</sup> <sub>subscript</sub> normal <s>strikethrough</s> bye`
@@ -35,6 +35,10 @@ describe('Chat', function () {
 		assert.equal(
 			Chat.formatText(`hi __spoiler: bye__ hi again (parenthetical spoiler: bye again (or not!!!!)) that was fun`),
 			`hi <i>spoiler: <span class="spoiler">bye</span></i> hi again (parenthetical spoiler: <span class="spoiler">bye again (or not!!!!)</span>) that was fun`
+		);
+		assert.equal(
+			Chat.formatText(`hi __||bye||__ hi again (parenthetical ||bye again (or not!!!!)||) that was fun`),
+			`hi <i><span class="spoiler">bye</span></i> hi again (parenthetical <span class="spoiler">bye again (or not!!!!)</span>) that was fun`
 		);
 		assert.equal(
 			Chat.formatText(`hi google.com/__a__ bye >w<`),
@@ -78,7 +82,7 @@ describe('Chat', function () {
 		);
 		assert.equal(
 			Chat.formatText(`[[pokemon: Oshawott]] >w<`, true),
-			`<a href="//dex.pokemonshowdown.com/pokemon/oshawott" target="_blank"><psicon pokemon="Oshawott"/></a> &gt;w&lt;`
+			`<a href="//dex.pokemonshowdown.com/pokemon/oshawott" target="_blank"><psicon pokemon="Oshawott" /></a> &gt;w&lt;`
 		);
 		assert.equal(
 			Chat.formatText(`[[item: Beast ball]] >w<`),
@@ -88,5 +92,23 @@ describe('Chat', function () {
 			Chat.formatText(`:)`, true),
 			`:)`
 		);
+		assert.equal(
+			Chat.formatText(`a\nb\nc`),
+			`a\nb\nc`
+		);
+		assert.equal(
+			Chat.formatText(`a\nb\nc`, true),
+			`a<br />b<br />c`
+		);
+		assert.equal(
+			Chat.formatText(`a\nb\nc`, false, true),
+			`a<br />b<br />c`
+		);
+	});
+
+	it('should run toDurationString correctly', () => {
+		assert(Chat.toDurationString(1e50));
+
+		assert(!Chat.toDurationString(10000000 * 24 * 60 * 60 * 1000).includes('  '));
 	});
 });

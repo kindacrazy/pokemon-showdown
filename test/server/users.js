@@ -2,31 +2,29 @@
 
 const assert = require('assert').strict;
 
-const userUtils = require('../users-utils');
-const Connection = userUtils.Connection;
-const User = userUtils.User;
+const { makeUser, makeConnection } = require('../users-utils');
 
-describe('Users features', function () {
-	describe('Users', function () {
-		describe('get', function () {
-			it('should be a function', function () {
+describe('Users features', () => {
+	describe('Users', () => {
+		describe('get', () => {
+			it('should be a function', () => {
 				assert.equal(typeof Users.get, 'function');
 			});
 		});
-		describe('connections', function () {
-			it('should be a Map', function () {
-				assert.ok(Users.connections instanceof Map);
+		describe('connections', () => {
+			it('should be a Map', () => {
+				assert(Users.connections instanceof Map);
 			});
 		});
-		describe('users', function () {
-			it('should be a Map', function () {
-				assert.ok(Users.users instanceof Map);
+		describe('users', () => {
+			it('should be a Map', () => {
+				assert(Users.users instanceof Map);
 			});
 		});
-		describe('Connection', function () {
-			describe('#onDisconnect', function () {
+		describe('Connection', () => {
+			describe('#onDisconnect', () => {
 				beforeEach(function () {
-					this.connection = new Connection('127.0.0.1');
+					this.connection = makeConnection('127.0.0.1');
 				});
 
 				it('should remove the connection from Users.connections', function () {
@@ -36,7 +34,7 @@ describe('Users features', function () {
 				});
 
 				it('should destroy any user on the connection as well', function () {
-					const user = new User(this.connection);
+					const user = makeUser('', this.connection);
 					const userid = user.id;
 					assert.equal(Users.users.has(userid), true, 'before disconnecting');
 					user.disconnectAll();
@@ -45,68 +43,76 @@ describe('Users features', function () {
 				});
 			});
 
-			describe('#joinRoom', function () {
-				let room;
-				beforeEach(function () {
-					this.connection = new Connection('127.0.0.1');
+			describe('#joinRoom', () => {
+				let room, connection;
+				beforeEach(() => {
+					connection = makeConnection('127.0.0.1');
 				});
 
-				afterEach(function () {
-					this.connection.destroy();
+				afterEach(() => {
+					connection.destroy();
 					if (room) room.destroy();
 				});
 
-				it('should join a room if not already present', function () {
+				it('should join a room if not already present', () => {
 					room = Rooms.createChatRoom('test');
-					this.connection.joinRoom(Rooms.get('test'));
-					assert.ok(this.connection.inRooms.has('test'));
+					connection.joinRoom(Rooms.get('test'));
+					assert(connection.inRooms.has('test'));
 				});
 			});
 
-			describe('#leaveRoom', function () {
+			describe('#leaveRoom', () => {
 				let room;
-				afterEach(function () {
+				afterEach(() => {
 					if (room) room.destroy();
 				});
 				it('should leave a room that is present', function () {
-					this.connection = new Connection('127.0.0.1');
+					this.connection = makeConnection('127.0.0.1');
 					room = Rooms.createChatRoom('test');
 					this.connection.joinRoom(room);
 					this.connection.leaveRoom(room);
-					assert.ok(!this.connection.inRooms.has('test'));
+					assert(!this.connection.inRooms.has('test'));
 				});
 			});
 		});
-		describe('User', function () {
-			describe('#disconnectAll', function () {
+		describe('User', () => {
+			it('should store IP addresses after disconnect', () => {
+				const conn = makeConnection('127.0.0.1');
+				const user = makeUser('', conn);
+				assert.deepEqual(['127.0.0.1'], user.ips);
+				user.onDisconnect(conn);
+				assert.deepEqual(['127.0.0.1'], user.ips);
+			});
+
+			describe('#disconnectAll', () => {
 				for (const totalConnections of [1, 2]) {
-					it('should drop all ' + totalConnections + ' connection(s) and mark as inactive', function () {
-						const user = new User();
+					it('should drop all ' + totalConnections + ' connection(s) and mark as inactive', () => {
+						const user = makeUser();
 						let iterations = totalConnections;
-						while (--iterations) user.mergeConnection(new Connection());
+						while (--iterations) user.mergeConnection(makeConnection());
 
 						user.disconnectAll();
 						assert.equal(user.connections.length, 0);
 						assert.equal(user.connected, false);
 					});
 
-					it('should unref all ' + totalConnections + ' connection(s)', function () {
-						const user = new User();
+					it('should unref all ' + totalConnections + ' connection(s)', () => {
+						const user = makeUser();
 						let iterations = totalConnections;
-						while (--iterations) user.mergeConnection(new Connection());
+						while (--iterations) user.mergeConnection(makeConnection());
 
 						const connections = user.connections.slice();
 
 						user.disconnectAll();
 						for (let i = 0; i < totalConnections; i++) {
-							assert.ok(!Users.connections.has(connections[i].id));
+							assert(!Users.connections.has(connections[i].id));
 						}
 					});
 
-					it('should clear `user` property for all ' + totalConnections + ' connection(s)', function () {
-						const user = new User();
+					it('should clear `user` property for all ' + totalConnections + ' connection(s)', () => {
+						const user = makeUser();
 						let iterations = totalConnections;
-						while (--iterations) user.mergeConnection(new Connection());
+						while (--iterations) user.mergeConnection(makeConnection());
 						const connections = user.connections.slice();
 
 						user.disconnectAll();
@@ -116,39 +122,33 @@ describe('Users features', function () {
 					});
 				}
 			});
-			describe('#ban', function () {
-				afterEach(function () {
+			describe('#ban (network) (slow)', () => {
+				afterEach(() => {
 					for (const ip in Users.bannedIps) {
 						delete Users.bannedIps[ip];
 					}
 				});
 
-				it('should disconnect every user at that IP', async function () {
+				it('should disconnect every user at that IP', async () => {
 					Punishments.sharedIps = new Map();
-					const users = ['127.0.0.1', '127.0.0.1'].map(ip => new User(new Connection(ip)));
-					await Punishments.ban(users[0]);
-					assert.equal(users[0].connected, false);
-					assert.equal(users[1].connected, false);
+					const user1 = makeUser('', '192.168.1.1');
+					const user2 = makeUser('', '192.168.1.1');
+					await Punishments.ban(user1);
+					assert.equal(user1.connected, false);
+					assert.equal(user2.connected, false);
 				});
 
-				it('should not disconnect users at other IPs', async function () {
-					const users = ['127.0.0.1', '127.0.0.2'].map(ip => new User(new Connection(ip)));
-					await Punishments.ban(users[0]);
-					assert.equal(users[1].connected, true);
-				});
-
-				it('should update IP count properly', async function () {
-					const user = new User();
-					await Punishments.ban(user);
-					for (const ip in user.ips) {
-						assert.equal(user.ips[ip], 0);
-					}
+				it('should not disconnect users at other IPs', async () => {
+					const user1 = makeUser('', '192.168.1.1');
+					const user2 = makeUser('', '192.168.1.2');
+					await Punishments.ban(user1);
+					assert.equal(user2.connected, true);
 				});
 			});
 
-			describe('#can', function () {
+			describe('#can', () => {
 				let room;
-				afterEach(function () {
+				afterEach(() => {
 					for (const user of Users.users.values()) {
 						user.disconnectAll();
 						user.destroy();
@@ -157,43 +157,28 @@ describe('Users features', function () {
 						if (room) room.destroy();
 					}
 				});
-				it(`should allow 's' permissions only on self`, function () {
-					const user = new User();
-					user.group = '+';
-					assert.equal(user.can('alts', user), true, 'targeting self');
+				it(`should allow 'u' permissions on lower ranked users`, () => {
+					const user = makeUser();
+					user.tempGroup = '@';
+					assert.equal(user.can('globalban', user), false, 'targeting self');
 
-					const target = new User();
-					target.group = ' ';
-					assert.equal(user.can('alts', target), false, 'targeting lower rank');
-					target.group = '+';
-					assert.equal(user.can('alts', target), false, 'targeting same rank');
-					target.group = '%';
-					assert.equal(user.can('alts', target), false, 'targeting higher rank');
+					const target = makeUser();
+					target.tempGroup = ' ';
+					assert.equal(user.can('globalban', target), true, 'targeting lower rank');
+					target.tempGroup = '@';
+					assert.equal(user.can('globalban', target), false, 'targeting same rank');
+					target.tempGroup = '~';
+					assert.equal(user.can('globalban', target), false, 'targeting higher rank');
 				});
-				it(`should allow 'u' permissions on lower ranked users`, function () {
-					const user = new User();
-					user.group = '&';
-					assert.equal(user.can('promote', user), false, 'targeting self');
-
-					const target = new User();
-					target.group = ' ';
-					assert.equal(user.can('promote', target), true, 'targeting lower rank');
-					target.group = '&';
-					assert.equal(user.can('promote', target), false, 'targeting same rank');
-					target.group = '~';
-					assert.equal(user.can('promote', target), false, 'targeting higher rank');
-				});
-				it(`should not allow users to demote themselves`, function () {
+				it(`should not allow users to demote themselves`, () => {
 					room = Rooms.createChatRoom("test");
-					if (!room.auth) room.auth = {};
-					const user = new User();
-					user.forceRename("User", true);
+					const user = makeUser("User");
 					user.joinRoom(room);
 					for (const group of [' ', '+', '@']) {
-						room.auth[user.id] = group;
-						assert.equal(room.getAuth(user), group, 'before demotion attempt');
+						room.auth.set(user.id, group);
+						assert.equal(room.auth.get(user.id), group, 'before demotion attempt');
 						Chat.parse("/roomdeauth User", room, user, user.connections[0]);
-						assert.equal(room.getAuth(user), group, 'after demotion attempt');
+						assert.equal(room.auth.get(user.id), group, 'after demotion attempt');
 					}
 				});
 			});

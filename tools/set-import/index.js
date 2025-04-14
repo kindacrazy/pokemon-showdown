@@ -1,5 +1,5 @@
 /**
- * Imports and generates the '@pokemon-showdown/sets' package.
+ * Imports and generates the '@smogon/sets' package.
  * Pokemon Showdown - http://pokemonshowdown.com/
  *
  * Run with `node tools/set-import [version]`. If version is not specified,
@@ -12,7 +12,7 @@
  * bumped (with 'major' or 'breaking' as the version argument). The exact
  * version string (eg. '1.2.3') can also be provided. After creating the set
  * import, provided there are no serious errors, the package can be released
- * by running `npm publish --access public` in the `sets/` directory.
+ * by running `npm publish` in the `sets/` directory.
  *
  * @license MIT
  */
@@ -22,7 +22,7 @@
 const child_process = require('child_process');
 const path = require('path');
 const fs = require('fs');
-const shell = cmd => child_process.execSync(cmd, {stdio: 'inherit', cwd: path.resolve(__dirname, '../..')});
+const shell = cmd => child_process.execSync(cmd, { stdio: 'inherit', cwd: path.resolve(__dirname, '../..') });
 shell('node build');
 
 function missing(dep) {
@@ -35,13 +35,8 @@ function missing(dep) {
 	}
 }
 
-// We depend on smogon as a devDependency in order to get the typing
-// information, but only need to download json5 on demand if a developer
-// actually runs this set-import tool.
-const deps = [];
-if (missing('smogon')) deps.push('smogon');
-if (missing('json5')) deps.push('json5');
-if (deps.length) shell(`npm install --no-save ${deps}`);
+// We depend on smogon as a devDependency in order to get the typing information
+if (missing('smogon')) shell(`npm install --no-save smogon`);
 
 // Rather obnoxiously, the TeamValidator used by the importer refers to
 // rulesets which rely on Chat.plural to be set up, so we do so here.
@@ -56,10 +51,8 @@ Chat.plural = function (num, plural = 's', singular = '') {
 	}
 	return (num !== 1 ? plural : singular);
 };
-// Sigh. Yay globals!
-global.toID = require('../../.sim-dist/dex').Dex.getId;
 
-const importer = require('./importer.js');
+const importer = require('../../dist/tools/set-import/importer.js');
 
 const SETS = path.resolve(__dirname, 'sets');
 (async () => {
@@ -91,23 +84,23 @@ const SETS = path.resolve(__dirname, 'sets');
 			} else {
 				version = `${major}.${minor}.${Number(patch) + 1}`;
 			}
-		} catch (err) {
-			console.error("Version required to create '@pokemon-showdown/sets' package");
+		} catch {
+			console.error("Version required to create '@smogon/sets' package");
 			process.exit(1);
 		}
 	}
 
 	const packagejson = {
-		"name": "@pokemon-showdown/sets",
-		"version": version,
-		"description": "Set data imported from Smogon.com and third-party sources and used on Pokémon Showdown",
-		"main": "build/index.js",
-		"types": "build/index.d.ts",
-		"repository": {
-			"type": "git",
-			"url": "https://github.com/smogon/pokemon-showdown.git",
+		"name": "@smogon/sets",
+		version,
+		"description": "Set data imported from Smogon.com and used on Pokémon Showdown",
+		"main": "index.js",
+		"unpkg": "index.js",
+		"types": "index.d.ts",
+		"repository": "github:smogon/sets",
+		"publishConfig": {
+			"access": "public",
 		},
-		"author": "Kirk Scheibelhut",
 		"license": "UNLICENSED", // The code/typings are MIT, but not all sources of data fall under MIT
 	};
 	fs.writeFileSync(path.resolve(SETS, 'package.json'), JSON.stringify(packagejson, null, 2));
@@ -131,7 +124,7 @@ const SETS = path.resolve(__dirname, 'sets');
 		'}',
 		'function forGen(gen) {',
 		// eslint-disable-next-line no-template-curly-in-string
-		'	return JSON[`gen${gen}`];',
+		'	return JSON[`gen${typeof gen === "number" ? gen : gen.num}`];',
 		'}',
 		'exports.forGen = forGen;',
 		'function forFormat(format) {',
@@ -141,4 +134,3 @@ const SETS = path.resolve(__dirname, 'sets');
 	].join('\n');
 	fs.writeFileSync(path.resolve(SETS, 'index.js'), indexjs);
 })().catch(err => console.error(err));
-

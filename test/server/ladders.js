@@ -2,13 +2,13 @@
 
 const assert = require('assert').strict;
 
-global.Ladders = require('../../.server-dist/ladders').Ladders;
-const {Connection, User} = require('../users-utils');
+global.Ladders = require('../../dist/server/ladders').Ladders;
+const { makeUser } = require('../users-utils');
 
-describe('Matchmaker', function () {
+describe('Matchmaker', () => {
 	const FORMATID = 'gen7ou';
 	const addSearch = (player, rating = 1000, formatid = FORMATID) => {
-		const search = new Ladders.BattleReady(player.id, formatid, player.team, rating);
+		const search = new Ladders.BattleReady(player.id, formatid, player.battleSettings, rating);
 		Ladders(formatid).addSearch(search, player);
 		return search;
 	};
@@ -19,22 +19,18 @@ describe('Matchmaker', function () {
 		return null;
 	};
 
-	before(function () {
+	before(() => {
 		clearInterval(Ladders.periodicMatchInterval);
 		Ladders.periodicMatchInterval = null;
 	});
 
 	beforeEach(function () {
-		this.p1 = new User(new Connection('127.0.0.1'));
-		this.p1.forceRename('Morfent', true);
-		this.p1.connected = true;
-		this.p1.team = 'Gengar||||lick||252,252,4,,,|||||';
+		this.p1 = makeUser('Morfent', '192.168.0.1');
+		this.p1.battleSettings.team = 'Gengar||||lick||252,252,4,,,|||||';
 		Users.users.set(this.p1.id, this.p1);
 
-		this.p2 = new User(new Connection('0.0.0.0'));
-		this.p2.forceRename('Mrofnet', true);
-		this.p2.connected = true;
-		this.p2.team = 'Gengar||||lick||252,252,4,,,|||||';
+		this.p2 = makeUser('Mrofnet', '192.168.0.2');
+		this.p2.battleSettings.team = 'Gengar||||lick||252,252,4,,,|||||';
 		Users.users.set(this.p2.id, this.p2);
 	});
 
@@ -45,43 +41,49 @@ describe('Matchmaker', function () {
 
 	it('should add a search', function () {
 		const s1 = addSearch(this.p1);
-		assert.ok(Ladders.searches.has(FORMATID));
+		assert(Ladders.searches.has(FORMATID));
 
-		const formatSearches = Ladders.searches.get(FORMATID);
-		assert.ok(formatSearches instanceof Map);
+		const formatSearches = Ladders.searches.get(FORMATID).searches;
+		assert(formatSearches instanceof Map);
 		assert.equal(formatSearches.size, 1);
 		assert.equal(s1.userid, this.p1.id);
-		assert.equal(s1.team, this.p1.team);
+		assert.equal(s1.settings.team, this.p1.battleSettings.team);
 		assert.equal(s1.rating, 1000);
 	});
 
 	it('should matchmake users when appropriate', function () {
 		addSearch(this.p1);
 		addSearch(this.p2);
-		assert.equal(Ladders.searches.get(FORMATID).size, 0);
+		assert.equal(Ladders.searches.get(FORMATID).searches.size, 0);
+
+		const [roomid] = [...this.p1.games];
+		Rooms.get(roomid).destroy();
 	});
 
 	it('should matchmake users within a reasonable rating range', function () {
 		addSearch(this.p1);
 		addSearch(this.p2, 2000);
-		assert.equal(Ladders.searches.get(FORMATID).size, 2);
+		assert.equal(Ladders.searches.get(FORMATID).searches.size, 2);
 	});
 
 	it('should cancel searches', function () {
 		addSearch(this.p1);
 		Ladders(FORMATID).cancelSearch(this.p1);
 		Ladders.cancelSearches(this.p2);
-		assert.equal(Ladders.searches.get(FORMATID).size, 0);
+		assert.equal(Ladders.searches.get(FORMATID).searches.size, 0);
 	});
 
 	it('should periodically matchmake users when appropriate', function () {
 		addSearch(this.p1);
 		const s2 = addSearch(this.p2, 2000);
-		assert.equal(Ladders.searches.get(FORMATID).size, 2);
+		assert.equal(Ladders.searches.get(FORMATID).searches.size, 2);
 
 		s2.rating = 1000;
 		Ladders.Ladder.periodicMatch();
-		assert.equal(Ladders.searches.get(FORMATID).size, 0);
+		assert.equal(Ladders.searches.get(FORMATID).searches.size, 0);
+
+		const [roomid] = [...this.p1.games];
+		Rooms.get(roomid).destroy();
 	});
 
 	it('should create a new battle room after matchmaking', function () {
@@ -90,23 +92,23 @@ describe('Matchmaker', function () {
 		addSearch(this.p2);
 		assert.equal(this.p1.games.size, 1);
 		for (const roomid of this.p1.games) {
-			assert.ok(Rooms.get(roomid).battle);
+			assert(Rooms.get(roomid).battle);
 		}
 	});
 
 	it('should cancel search on disconnect', function () {
 		addSearch(this.p1);
 		this.p1.onDisconnect(this.p1.connections[0]);
-		assert.equal(Ladders.searches.get(FORMATID).size, 0);
+		assert.equal(Ladders.searches.get(FORMATID).searches.size, 0);
 	});
 
 	it('should cancel search on merge', function () {
 		addSearch(this.p1);
 		this.p2.merge(this.p1);
-		assert.equal(Ladders.searches.get(FORMATID).size, 0);
+		assert.equal(Ladders.searches.get(FORMATID).searches.size, 0);
 	});
 
-	describe('#startBattle', function () {
+	describe('#startBattle', () => {
 		beforeEach(function () {
 			this.s1 = addSearch(this.p1);
 			this.s2 = addSearch(this.p2);
@@ -121,8 +123,15 @@ describe('Matchmaker', function () {
 			Object.assign(this.s2, this.s1);
 			let room;
 			try {
-				room = Rooms.createBattle(FORMATID, {p1: this.p1, p2: this.p1, p1team: this.s1.team, p2team: this.s2.team, rated: 1000});
-			} catch (e) {}
+				room = Rooms.createBattle({
+					format: FORMATID,
+					players: [
+						{ user: this.p1, team: this.s1.team },
+						{ user: this.p1, team: this.s2.team },
+					],
+					rated: 1000,
+				});
+			} catch {}
 			assert.equal(room, undefined);
 		});
 
@@ -137,8 +146,12 @@ describe('Matchmaker', function () {
 		});
 
 		it('should prevent battles from starting if the server is in lockdown', function () {
-			const room = Rooms.createBattle(FORMATID, {p1: this.p1, p2: this.p2, p1team: this.s1.team, p2team: this.s2.team, rated: 1000});
-			assert.equal(room, undefined);
+			const room = Rooms.createBattle({
+				format: FORMATID,
+				players: [{ user: this.p1, team: this.s1.team }, { user: this.p2, team: this.s2.team }],
+				rated: 1000,
+			});
+			assert.equal(room, null);
 		});
 	});
 });
